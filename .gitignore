@@ -1,0 +1,5 @@
+_ignore_
+.env
+tmp
+out
+.vscode/settings.json
