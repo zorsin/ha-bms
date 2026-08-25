@@ -9,11 +9,15 @@ import (
 )
 
 type Config struct {
-	HTTPPort  int    `env:"HTTP_PORT"`
-	HAURL     string `env:"HOMEASSISTANT_URL"`
-	HAToken   string `env:"HOMEASSISTANT_TOKEN"`
-	LogLevel  string `env:"LOG_LEVEL" envDefault:"info"`
-	BMSActive bool   `env:"BMS_ACTIVE" envDefault:"true"`
+	HTTPPort        int    `env:"HTTP_PORT"`
+	HAURL           string `env:"HOMEASSISTANT_URL"`
+	HAMQTTURL       string `env:"HOMEASSISTANT_MQTT_URL"`
+	HAMQTTUser      string `env:"HOMEASSISTANT_MQTT_USER"`
+	HAMQTTPassword  string `env:"HOMEASSISTANT_MQTT_PASSWORD"`
+	HAToken         string `env:"HOMEASSISTANT_TOKEN"`
+	LogLevel        string `env:"LOG_LEVEL" envDefault:"info"`
+	BMSActive       bool   `env:"BMS_ACTIVE" envDefault:"true"`
+	MQTTSetDefaults bool   `env:"MQTT_SET_DEFAULTS" envDefault:"false"`
 }
 
 func Get() *Config {

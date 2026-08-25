@@ -3,94 +3,23 @@ package service
 import (
 	"context"
 	"log/slog"
+	"strconv"
+)
+
+const (
+	// solakon one
+	sensorSolakonBatteryPowerEntityID    = "sensor.solakon_one_batterie_leistung"
+	sensorSolakonBatteryCapacityEntityID = "sensor.solakon_one_batteriekapazitat"
+	sensorSolakonBatteryLevelEntityID    = "sensor.solakon_one_batterie_ladestand"
 )
 
 func (s *service) startSubscriptions(ctx context.Context, b *Broadcaster) {
-	go s.subscribeBMS(ctx, b)
-	go s.subscribeBMSSimulation(ctx, b)
-	go s.subscribeSolakonBatteryPower(ctx, b)
-
-	// TODO: Subscribe once and filter state_changed events for selected entities.
-	// sub, err := ws.SubscribeStateChangedMany(context.Background(), watchedEntities...)
-}
-
-func (s *service) subscribeBMS(ctx context.Context, b *Broadcaster) {
-	sub, err := s.haWs.SubscribeStateChanged(ctx, bmsEnabledEntityID)
-	if err != nil {
-		s.logger.Error("Failed to subscribe to HA events", slog.Any("err", err))
-		return
+	watchedEntities := []string{
+		sensorSolakonBatteryPowerEntityID,
+		sensorSolakonBatteryLevelEntityID,
 	}
-	defer sub.Unsubscribe(context.Background())
-	for {
-		select {
-		case <-ctx.Done():
-			s.logger.Info("Done", slog.Any("err", ctx.Err()))
-			return
-		case err := <-sub.Errors():
-			if err != nil {
-				s.logger.Error("subscription error", slog.Any("err", err))
-			}
-		case ev, ok := <-sub.Events():
-			if !ok {
-				s.logger.Info("subscription closed")
-				return
-			}
-
-			// Decode the event payload to strongly-typed state_changed data.
-			data, ok, err := ev.StateChanged()
-			if err != nil || !ok || data.NewState == nil {
-				continue
-			}
-			oldState := ""
-			if data.OldState != nil {
-				oldState = data.OldState.State
-			}
-			b.Publish(StateUpdate{ID: data.EntityID, Value: data.NewState.State})
-			s.logger.Info("HA event received", slog.String("entity_id", data.EntityID), slog.String("old_state", oldState), slog.String("new_state", data.NewState.State))
-		}
-	}
-}
-
-func (s *service) subscribeBMSSimulation(ctx context.Context, b *Broadcaster) {
-	sub, err := s.haWs.SubscribeStateChanged(ctx, bmsSimulationEnabledEntityID)
-	if err != nil {
-		s.logger.Error("Failed to subscribe to HA events", slog.Any("err", err))
-		return
-	}
-	defer sub.Unsubscribe(context.Background())
-	s.logger.Info("Started sub")
-	for {
-		select {
-		case <-ctx.Done():
-			s.logger.Info("Done", slog.Any("err", ctx.Err()))
-			return
-		case err := <-sub.Errors():
-			if err != nil {
-				s.logger.Error("subscription error", slog.Any("err", err))
-			}
-		case ev, ok := <-sub.Events():
-			if !ok {
-				s.logger.Info("subscription closed")
-				return
-			}
-			s.logger.Info("HA event received")
-			// Decode the event payload to strongly-typed state_changed data.
-			data, ok, err := ev.StateChanged()
-			if err != nil || !ok || data.NewState == nil {
-				continue
-			}
-			oldState := ""
-			if data.OldState != nil {
-				oldState = data.OldState.State
-			}
-			b.Publish(StateUpdate{ID: data.EntityID, Value: data.NewState.State})
-			s.logger.Info("HA event received", slog.String("entity_id", data.EntityID), slog.String("old_state", oldState), slog.String("new_state", data.NewState.State))
-		}
-	}
-}
-
-func (s *service) subscribeSolakonBatteryPower(ctx context.Context, b *Broadcaster) {
-	sub, err := s.haWs.SubscribeStateChanged(ctx, sensorSolakonBatteryPowerEntityID)
+	// Subscribe once and filter state_changed events for selected entities.
+	sub, err := s.haWs.SubscribeStateChangedMany(ctx, watchedEntities...)
 	if err != nil {
 		s.logger.Error("Failed to subscribe to HA events", slog.Any("err", err))
 		return
@@ -120,7 +49,61 @@ func (s *service) subscribeSolakonBatteryPower(ctx context.Context, b *Broadcast
 				oldState = data.OldState.State
 			}
 			b.Publish(StateUpdate{ID: data.EntityID, Value: data.NewState.State})
-			s.logger.Info("HA event received", slog.String("entity_id", data.EntityID), slog.String("old_state", oldState), slog.String("new_state", data.NewState.State))
+			s.logger.Debug("HA event received", slog.String("entity_id", data.EntityID), slog.String("old_state", oldState), slog.String("new_state", data.NewState.State))
 		}
 	}
+}
+
+func (s *service) getStaticStates(ctx context.Context) bool {
+	solakon := &SolakonOne{
+		BatteryEfficiency: 0.85,
+		ACMaxAllowedPower: 800,
+	}
+	batteryManagement := &BatteryManagement{
+		BMSEnabled:           false,
+		BMSSimulationEnabled: false,
+		MinimumBatteryLevel:  20,
+		MinimumBatteryTime:   "10:00:00",
+	}
+
+	totalOk := true
+	state, err := s.haClient.GetStateForEntity(ctx, sensorSolakonBatteryCapacityEntityID)
+	if err != nil {
+		totalOk = false
+	}
+	solakon.BatteryCapacity, _ = strconv.ParseFloat(state.State, 64)
+
+	state, err = s.haClient.GetStateForEntity(ctx, sensorSolakonBatteryLevelEntityID)
+	if err != nil {
+		totalOk = false
+	}
+	solakon.Initials.BatteryLevel, _ = strconv.ParseFloat(state.State, 64)
+	state, err = s.haClient.GetStateForEntity(ctx, sensorSolakonBatteryPowerEntityID)
+	if err != nil {
+		totalOk = false
+	}
+	solakon.Initials.BatteryPower, _ = strconv.ParseFloat(state.State, 64)
+
+	state, err = s.haClient.GetStateForEntity(ctx, string(MinumumBattery))
+	if err == nil {
+		batteryManagement.MinimumBatteryLevel, _ = strconv.ParseFloat(state.State, 64)
+	}
+	state, err = s.haClient.GetStateForEntity(ctx, string(MinumumBatteryTime))
+	if err == nil {
+		batteryManagement.MinimumBatteryTime = state.State
+	}
+
+	state, err = s.haClient.GetStateForEntity(ctx, string(BMS))
+	if err == nil {
+		batteryManagement.BMSEnabled = state.State == "on"
+	}
+	state, err = s.haClient.GetStateForEntity(ctx, string(BMSSimulation))
+	if err == nil {
+		batteryManagement.BMSSimulationEnabled = state.State == "on"
+	}
+
+	s.solakon = solakon
+	s.batteryManagement = batteryManagement
+	s.logger.Info("Initial states", slog.Any("solakon", solakon), slog.Any("batteryManagement", batteryManagement))
+	return totalOk
 }
