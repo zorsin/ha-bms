@@ -196,8 +196,9 @@ func (s *service) batteryDrainByBatteryPower(ctx context.Context, b *Broadcaster
 			drain, _ = strconv.ParseFloat(d.Value, 64)
 		case l := <-chLevel:
 			level, _ = strconv.ParseFloat(l.Value, 64)
-		case <-chBMS:
-			// do run
+		case <-ctx.Done():
+			return
+		case <-chBMS: // do run
 		}
 
 		calculateAndPublish()
@@ -251,8 +252,9 @@ func (s *service) batteryMaxDrainUntilLevel(ctx context.Context, b *Broadcaster)
 			if ok {
 				targetTime = targetTimeParsed
 			}
-		case <-chBMS:
-			// do run
+		case <-ctx.Done():
+			return
+		case <-chBMS: // do run
 		}
 		calculateAndPublish()
 	}
