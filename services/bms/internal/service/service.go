@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	ha "github.com/mkelcik/go-ha-client/v2"
 	"github.com/zorsin/ha-bms/services/bms/internal/config"
+	"github.com/zorsin/ha-bms/services/bms/internal/energycharts"
 )
 
 type service struct {
@@ -21,6 +21,7 @@ type service struct {
 	mqttClient        mqtt.Client
 	solakon           *SolakonOne
 	batteryManagement *BatteryManagement
+	energyCharts      *energycharts.Client
 }
 
 const (
@@ -29,18 +30,32 @@ const (
 
 func New(cfg *config.Config, logger *slog.Logger) *service {
 
-	client, err := ha.NewClient(cfg.HAURL, ha.WithToken(cfg.HAToken))
+	client, err := ha.NewClient(cfg.HAURL, ha.WithToken(cfg.HAToken), ha.WithTimeout(30*time.Second))
 	if err != nil {
 		logger.Error("Failed to create HA client", slog.Any("err", err))
 		return nil
 	}
 
-	haWs := client.WS()
+	haWs := client.WS(
+		ha.WithAutoReconnect(true),
+		ha.WithMaxRetries(0),
+		ha.WithReconnectBackoff(time.Second, 30*time.Second),
+		ha.WithOnReconnect(func() {
+			logger.Info("Reconnected to HA WebSocket")
+		}),
+		ha.WithOnReconnectError(func(err error) {
+			logger.Warn("Reconnect attempt failed", slog.Any("err", err))
+		}),
+	)
 	srv := &service{
 		cfg:      cfg,
 		logger:   logger,
 		haClient: client,
 		haWs:     haWs,
+		energyCharts: energycharts.New(energycharts.Options{
+			Config: cfg,
+			Logger: logger,
+		}),
 	}
 
 	return srv
@@ -163,122 +178,4 @@ func (s *service) initService(ctx context.Context) {
 
 	go s.batteryDrainByBatteryPower(ctx, b)
 	go s.batteryMaxDrainUntilLevel(ctx, b)
-}
-
-func (s *service) batteryDrainByBatteryPower(ctx context.Context, b *Broadcaster) {
-
-	chDrain := b.Subscribe(sensorSolakonBatteryPowerEntityID, 1)
-	chLevel := b.Subscribe(sensorSolakonBatteryLevelEntityID, 1)
-	chBMS := b.Subscribe(string(BMS), 1)
-
-	drain := s.solakon.Initials.BatteryPower
-	level := s.solakon.Initials.BatteryLevel
-
-	calculateAndPublish := func() {
-		if drain <= 0 || level <= 0 {
-			return
-		}
-		// calculates battery duration in hours
-		duration := calculateBatteryDuration(s.solakon.BatteryCapacity, level, s.solakon.BatteryEfficiency, drain)
-
-		s.logger.Debug("Battery duration calculated", slog.Float64("duration", duration))
-
-		s.updateState(HAStatePayload{
-			BatteryDuration: strconv.FormatFloat(duration, 'f', 2, 64),
-		}, true)
-	}
-
-	calculateAndPublish()
-
-	for {
-		select {
-		case d := <-chDrain:
-			drain, _ = strconv.ParseFloat(d.Value, 64)
-		case l := <-chLevel:
-			level, _ = strconv.ParseFloat(l.Value, 64)
-		case <-ctx.Done():
-			return
-		case <-chBMS: // do run
-		}
-
-		calculateAndPublish()
-	}
-
-}
-
-func (s *service) batteryMaxDrainUntilLevel(ctx context.Context, b *Broadcaster) {
-	chLevel := b.Subscribe(sensorSolakonBatteryLevelEntityID, 1)
-	chMinLevel := b.Subscribe(string(MinumumBattery), 1)
-	chMinTime := b.Subscribe(string(MinumumBatteryTime), 1)
-	chBMS := b.Subscribe(string(BMS), 1)
-
-	level := s.solakon.Initials.BatteryLevel
-	minLevel := s.batteryManagement.MinimumBatteryLevel
-	// fallback to 00:00:00 if not set
-	targetTime := time.Now().Add(24 * time.Hour).Truncate(24 * time.Hour)
-	targetTimeParsed, ok := targetTimeFromString(s.batteryManagement.MinimumBatteryTime)
-	if ok {
-		targetTime = targetTimeParsed
-	}
-
-	calculateAndPublish := func() {
-		if level < minLevel {
-			return
-		}
-		usableWattHours := s.solakon.BatteryCapacity * 1000 * (level - minLevel) / 100 * s.solakon.BatteryEfficiency
-
-		// targetTime = next day at 10:00 AM
-		hoursUntilTarget := targetTime.Sub(time.Now()).Hours()
-		maxDrain := usableWattHours / hoursUntilTarget
-
-		s.logger.Debug("Max drain calculated", slog.Float64("max_drain", maxDrain), slog.Time("at", targetTime))
-
-		s.updateState(HAStatePayload{
-			MaximumDrainForMinimum: strconv.FormatFloat(maxDrain, 'f', 2, 64),
-		}, true)
-	}
-
-	calculateAndPublish()
-
-	for {
-		select {
-		case l := <-chLevel:
-			level, _ = strconv.ParseFloat(l.Value, 64)
-		case m := <-chMinLevel:
-			minLevel, _ = strconv.ParseFloat(m.Value, 64)
-		case mt := <-chMinTime:
-			// parse time in format "HH:MM:SS"
-			targetTimeParsed, ok := targetTimeFromString(mt.Value)
-			if ok {
-				targetTime = targetTimeParsed
-			}
-		case <-ctx.Done():
-			return
-		case <-chBMS: // do run
-		}
-		calculateAndPublish()
-	}
-}
-
-func calculateBatteryDuration(batteryCapacity, batteryLevel, batteryEfficiency, drain float64) float64 {
-
-	batteryAvailable := batteryLevel / 100 * batteryCapacity
-	batteryDuration := (batteryAvailable * 1000 * batteryEfficiency) / drain
-
-	return batteryDuration
-}
-
-func targetTimeFromString(timeStr string) (time.Time, bool) {
-	// parse time in format "HH:MM:SS"
-	parsedTime, err := time.Parse("15:04:05", timeStr)
-	if err != nil {
-		return time.Time{}, false
-	}
-	// calculate minTime as duration until the parsed time
-	now := time.Now()
-	targetTime := time.Date(now.Year(), now.Month(), now.Day(), parsedTime.Hour(), parsedTime.Minute(), parsedTime.Second(), 0, now.Location())
-	if targetTime.Before(now) {
-		targetTime = targetTime.Add(24 * time.Hour)
-	}
-	return targetTime, true
 }

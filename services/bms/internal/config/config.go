@@ -18,6 +18,7 @@ type Config struct {
 	LogLevel        string `env:"LOG_LEVEL" envDefault:"info"`
 	BMSActive       bool   `env:"BMS_ACTIVE" envDefault:"true"`
 	MQTTSetDefaults bool   `env:"MQTT_SET_DEFAULTS" envDefault:"false"`
+	EnergyChartsURL string `env:"ENERGY_CHARTS_URL" envDefault:"https://api.energy-charts.info/v2"`
 }
 
 func Get() *Config {
