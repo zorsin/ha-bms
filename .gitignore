@@ -3,3 +3,4 @@ _ignore_
 tmp
 out
 .vscode/settings.json
+.DS_Store

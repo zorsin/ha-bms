@@ -18,11 +18,14 @@ const (
 	MinumumBattery         BMSEntityID = "number.go_bms_minimum_battery"
 	MinumumBatteryTime     BMSEntityID = "time.go_bms_minimum_battery_time"
 	MaximumDrainForMinimum BMSEntityID = "sensor.go_bms_maximum_drain_for_minimum"
+	EnergyCostForecast     BMSEntityID = "sensor.go_bms_energy_cost_forecast"
+	EnergyCostCurrent      BMSEntityID = "sensor.go_bms_energy_cost_current"
 )
 
 const (
-	HAStateClassMeasurement HAStateClass = "measurement"
-	HAStateClassTotal       HAStateClass = "total"
+	HAStateClassMeasurement     HAStateClass = "measurement"
+	HAStateClassTotal           HAStateClass = "total"
+	HAStateClassTotalIncreasing HAStateClass = "total_increasing"
 )
 
 const (
@@ -30,6 +33,7 @@ const (
 	HADeviceClassPower    HADeviceClass = "power"
 	HADeviceClassEnergy   HADeviceClass = "energy"
 	HADeviceClassDuration HADeviceClass = "duration"
+	HADeviceClassMonetary HADeviceClass = "monetary"
 )
 
 const (
@@ -50,16 +54,18 @@ type HADevice struct {
 
 // Sensor Discovery Configuration Payload
 type HASensorConfig struct {
-	Name              string        `json:"name"`
-	UniqueDataID      string        `json:"unique_id"`
-	StateTopic        string        `json:"state_topic"`
-	UnitOfMeasurement string        `json:"unit_of_measurement,omitempty"`
-	DeviceClass       HADeviceClass `json:"device_class,omitempty"`
-	StateClass        HAStateClass  `json:"state_class,omitempty"`
-	ValueTemplate     string        `json:"value_template,omitempty"`
-	Icon              string        `json:"icon,omitempty"`
-	FriendlyName      string        `json:"friendly_name,omitempty"`
-	Device            HADevice      `json:"device"`
+	Name                   string        `json:"name"`
+	UniqueDataID           string        `json:"unique_id"`
+	StateTopic             string        `json:"state_topic"`
+	UnitOfMeasurement      string        `json:"unit_of_measurement,omitempty"`
+	DeviceClass            HADeviceClass `json:"device_class,omitempty"`
+	StateClass             HAStateClass  `json:"state_class,omitempty"`
+	ValueTemplate          string        `json:"value_template,omitempty"`
+	JSONAttributesTopic    string        `json:"json_attributes_topic,omitempty"`
+	JSONAttributesTemplate string        `json:"json_attributes_template,omitempty"`
+	Icon                   string        `json:"icon,omitempty"`
+	FriendlyName           string        `json:"friendly_name,omitempty"`
+	Device                 HADevice      `json:"device"`
 }
 
 type HASwitchConfig struct {
