@@ -12,14 +12,15 @@ const (
 )
 
 const (
-	BatteryDuration        BMSEntityID = "sensor.go_bms_battery_duration"
-	BMS                    BMSEntityID = "switch.go_bms_bms"
-	BMSSimulation          BMSEntityID = "switch.go_bms_bms_simulation"
-	MinumumBattery         BMSEntityID = "number.go_bms_minimum_battery"
-	MinumumBatteryTime     BMSEntityID = "time.go_bms_minimum_battery_time"
-	MaximumDrainForMinimum BMSEntityID = "sensor.go_bms_maximum_drain_for_minimum"
-	EnergyCostForecast     BMSEntityID = "sensor.go_bms_energy_cost_forecast"
-	EnergyCostCurrent      BMSEntityID = "sensor.go_bms_energy_cost_current"
+	BatteryDuration            BMSEntityID = "sensor.go_bms_battery_duration"
+	BMS                        BMSEntityID = "switch.go_bms_bms"
+	BMSSimulation              BMSEntityID = "switch.go_bms_bms_simulation"
+	MinumumBattery             BMSEntityID = "number.go_bms_minimum_battery"
+	MinumumBatteryTime         BMSEntityID = "time.go_bms_minimum_battery_time"
+	MaximumDrainForMinimum     BMSEntityID = "sensor.go_bms_maximum_drain_for_minimum"
+	EnergyCostCurrent          BMSEntityID = "sensor.go_bms_energy_cost_current"
+	EnergyCostForecast         BMSEntityID = "sensor.go_bms_energy_cost_forecast"
+	EnergyCostForecastTomorrow BMSEntityID = "sensor.go_bms_energy_cost_forecast_tomorrow"
 )
 
 const (

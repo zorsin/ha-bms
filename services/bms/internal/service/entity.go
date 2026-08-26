@@ -25,14 +25,15 @@ type ForcastData struct {
 }
 
 type HAStatePayload struct {
-	BMSEnabled             string       `json:"bms_enabled,omitempty"`
-	BMSSimulationEnabled   string       `json:"bms_simulation_enabled,omitempty"`
-	BatteryDuration        string       `json:"battery_duration,omitempty"`
-	MinimumBattery         string       `json:"minimum_battery,omitempty"`
-	MinimumBatteryTime     string       `json:"minimum_battery_time,omitempty"`
-	MaximumDrainForMinimum string       `json:"maximum_drain_for_minimum,omitempty"`
-	EnergyCostForecast     *ForcastData `json:"energy_cost_forecast,omitempty"`
-	EnergyCostCurrent      string       `json:"energy_cost_current,omitempty"`
+	BMSEnabled                 string       `json:"bms_enabled,omitempty"`
+	BMSSimulationEnabled       string       `json:"bms_simulation_enabled,omitempty"`
+	BatteryDuration            string       `json:"battery_duration,omitempty"`
+	MinimumBattery             string       `json:"minimum_battery,omitempty"`
+	MinimumBatteryTime         string       `json:"minimum_battery_time,omitempty"`
+	MaximumDrainForMinimum     string       `json:"maximum_drain_for_minimum,omitempty"`
+	EnergyCostCurrent          string       `json:"energy_cost_current,omitempty"`
+	EnergyCostForecast         *ForcastData `json:"energy_cost_forecast,omitempty"`
+	EnergyCostForecastTomorrow *ForcastData `json:"energy_cost_forecast_tomorrow,omitempty"`
 }
 
 func (s *service) initMQTTClient(ctx context.Context) error {
@@ -193,6 +194,22 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		},
 	}
 
+	entities[EnergyCostCurrent] = HAEntityConfig{
+		configTopic: "homeassistant/sensor/go_bms/energy_cost_current_001/config",
+		config: HASensorConfig{
+			FriendlyName:      "Energy Cost Current",
+			Name:              "energy_cost_current",
+			UniqueDataID:      "energy_cost_current_001",
+			StateTopic:        mqttBMSStateTopic,
+			ValueTemplate:     "{{ value_json.energy_cost_current }}",
+			UnitOfMeasurement: "EUR/kWh",
+			Icon:              "mdi:cash",
+			DeviceClass:       HADeviceClassMonetary,
+			StateClass:        HAStateClassMeasurement,
+			Device:            device,
+		},
+	}
+
 	entities[EnergyCostForecast] = HAEntityConfig{
 		configTopic: "homeassistant/sensor/go_bms/energy_cost_forecast_001/config",
 		config: HASensorConfig{
@@ -211,19 +228,21 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		},
 	}
 
-	entities[EnergyCostCurrent] = HAEntityConfig{
-		configTopic: "homeassistant/sensor/go_bms/energy_cost_current_001/config",
+	entities[EnergyCostForecastTomorrow] = HAEntityConfig{
+		configTopic: "homeassistant/sensor/go_bms/energy_cost_forecast_tomorrow_001/config",
 		config: HASensorConfig{
-			FriendlyName:      "Energy Cost Current",
-			Name:              "energy_cost_current",
-			UniqueDataID:      "energy_cost_current_001",
-			StateTopic:        mqttBMSStateTopic,
-			ValueTemplate:     "{{ value_json.energy_cost_current }}",
-			UnitOfMeasurement: "EUR/kWh",
-			Icon:              "mdi:cash",
-			DeviceClass:       HADeviceClassMonetary,
-			StateClass:        HAStateClassMeasurement,
-			Device:            device,
+			FriendlyName:           "Energy Cost Forecast Tomorrow",
+			Name:                   "energy_cost_forecast_tomorrow",
+			UniqueDataID:           "energy_cost_forecast_tomorrow_001",
+			StateTopic:             mqttBMSStateTopic,
+			ValueTemplate:          "{{ value_json.energy_cost_forecast_tomorrow.current }}",
+			JSONAttributesTopic:    mqttBMSStateTopic,
+			JSONAttributesTemplate: "{% if value_json.energy_cost_forecast_tomorrow is defined %}{{ {'forecast': value_json.energy_cost_forecast_tomorrow.forecast} | tojson }}{% endif %}",
+			UnitOfMeasurement:      "EUR/kWh",
+			Icon:                   "mdi:cash",
+			DeviceClass:            HADeviceClassMonetary,
+			StateClass:             HAStateClassMeasurement,
+			Device:                 device,
 		},
 	}
 
@@ -281,6 +300,12 @@ func (s *service) initEntities(ctx context.Context, b *Broadcaster) {
 				Current: "0.0",
 				Forecast: []*ForcastPoint{
 					{DateTime: time.Now().UTC().Format(time.RFC3339), Value: "0.001"},
+				},
+			},
+			EnergyCostForecastTomorrow: &ForcastData{
+				Current: "0.0",
+				Forecast: []*ForcastPoint{
+					{DateTime: time.Now().Add(25 * time.Hour).UTC().Format(time.RFC3339), Value: "0.001"},
 				},
 			},
 			EnergyCostCurrent: "0.0",

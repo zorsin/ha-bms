@@ -77,6 +77,9 @@ func (s *service) Start(ctx context.Context) {
 		s.logger.Info("BMS is active, initializing service")
 	} else {
 		s.logger.Info("BMS is not active, skipping service initialization")
+
+		b := NewBroadcaster()
+		s.energyChartDemo(ctx, b)
 		return
 	}
 	go s.initService(ctx)
