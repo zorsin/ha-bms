@@ -115,11 +115,11 @@ func (s *service) updateForcasts(ctx context.Context) {
 }
 
 func (s *service) energyChartTodayForcast(ctx context.Context) {
-	// TODO: fill cache with the forcast data
 	s.logger.Debug("Starting energy chart pricing service")
 	// call the energy chart api to get the pricing data
 	// get the current forcast
-	todayCast, err := s.energyCharts.Price(ctx, "", "", "")
+
+	todayCast, err := s.energyCharts.Price(ctx, "", time.Now().Format("2006-01-02"), "")
 	if err != nil {
 		s.logger.Error("Failed to get energy chart pricing", slog.Any("err", err))
 		return
@@ -129,6 +129,11 @@ func (s *service) energyChartTodayForcast(ctx context.Context) {
 	forecastData := s.getForcastData(todayCast)
 	s.logger.Debug("Energy chart pricing data point", slog.Any("forecastData", forecastData.Forecast[0]))
 
+	s.priceForecastCache.Insert("day_ahead_price", todayCast.Data)
+	lowest, err := s.priceForecastCache.GetLowestPrice()
+	if err == nil {
+		forecastData.Current = formatFloat(lowest.Value)
+	}
 	// publish the pricing data to the mqtt topic
 	s.updateState(HAStatePayload{
 		EnergyCostForecast: forecastData,
@@ -137,6 +142,12 @@ func (s *service) energyChartTodayForcast(ctx context.Context) {
 
 func (s *service) energyChartTomorrowForcast(ctx context.Context) {
 	s.logger.Debug("Starting energy chart pricing service")
+	now := time.Now()
+	// only between 14:00 and 23:59, get the next day forcast
+	if now.Hour() < 14 || now.Hour() > 23 {
+		s.logger.Debug("Skipping energychart forcast for tomorrow, not between 14:00 and 23:59", slog.Any("hour", now.Hour()))
+		return
+	}
 	// call the energy chart api to get the pricing data
 	// get the current forcast
 	tomorrowCast, err := s.energyCharts.NextDayPrice(ctx, "")
@@ -149,6 +160,11 @@ func (s *service) energyChartTomorrowForcast(ctx context.Context) {
 	forecastData := s.getForcastData(tomorrowCast)
 	s.logger.Debug("Energy chart pricing data point", slog.Any("forecastData", forecastData.Forecast[0]))
 
+	s.priceForecastCache.InsertTomorrow("day_ahead_price", tomorrowCast.Data)
+	lowest, err := s.priceForecastCache.GetLowestPriceTomorrow()
+	if err == nil {
+		forecastData.Current = formatFloat(lowest.Value)
+	}
 	// publish the pricing data to the mqtt topic
 	s.updateState(HAStatePayload{
 		EnergyCostForecastTomorrow: forecastData,
