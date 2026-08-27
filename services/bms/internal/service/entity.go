@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -11,34 +12,9 @@ import (
 )
 
 const (
-	mqttBMSStateTopic = "go_bms/state"
+	mqttBMSStateTopic            = "go_bms/state"
+	mqttBMSStateTopicPlaceholder = "go_bms/state/%s"
 )
-
-type ForcastPoint struct {
-	DateTime string `json:"datetime"`
-	Value    string `json:"value"`
-}
-
-type ForcastData struct {
-	Current  string          `json:"current"`
-	Forecast []*ForcastPoint `json:"forecast"`
-}
-
-type HAStatePayload struct {
-	BMSEnabled                 string       `json:"bms_enabled,omitempty"`
-	BMSSimulationEnabled       string       `json:"bms_simulation_enabled,omitempty"`
-	BatteryDuration            string       `json:"battery_duration,omitempty"`
-	MinimumBattery             string       `json:"minimum_battery,omitempty"`
-	MinimumBatteryTime         string       `json:"minimum_battery_time,omitempty"`
-	MaximumDrainForMinimum     string       `json:"maximum_drain_for_minimum,omitempty"`
-	EnergyCostCurrent          string       `json:"energy_cost_current,omitempty"`
-	EnergyCostForecast         *ForcastData `json:"energy_cost_forecast,omitempty"`
-	EnergyCostForecastTomorrow *ForcastData `json:"energy_cost_forecast_tomorrow,omitempty"`
-	ControlDuration            string       `json:"control_duration,omitempty"`
-	SimForceDuration           string       `json:"sim_force_duration,omitempty"`
-	SimForceMode               string       `json:"sim_force_mode,omitempty"`
-	SimForcePower              string       `json:"sim_force_power,omitempty"`
-}
 
 func (s *service) initMQTTClient(ctx context.Context) error {
 	opts := mqtt.NewClientOptions().AddBroker(s.cfg.HAMQTTURL)
@@ -55,13 +31,6 @@ func (s *service) initMQTTClient(ctx context.Context) error {
 	return nil
 }
 
-type HAEntityConfig struct {
-	configTopic string
-	config      any // HASensorConfig or HASwitchConfig
-	subTopic    string
-	subCallback mqtt.MessageHandler
-}
-
 func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityID]HAEntityConfig {
 	entities := make(map[BMSEntityID]HAEntityConfig)
 
@@ -71,7 +40,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 			FriendlyName:      "Battery Duration",
 			Name:              "battery_duration",
 			UniqueDataID:      "battery_duration_001",
-			StateTopic:        mqttBMSStateTopic,
+			StateTopic:        fmt.Sprintf(mqttBMSStateTopicPlaceholder, "battery_duration"),
 			ValueTemplate:     "{{ value_json.battery_duration }}",
 			UnitOfMeasurement: "h",
 			DeviceClass:       HADeviceClassDuration,
@@ -85,7 +54,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		config: HASwitchConfig{
 			Name:          "bms",
 			UniqueDataID:  "bms_switch_001",
-			StateTopic:    mqttBMSStateTopic,
+			StateTopic:    fmt.Sprintf(mqttBMSStateTopicPlaceholder, "bms_enabled"),
 			CommandTopic:  "go_bms/bms/set",
 			ValueTemplate: "{{ value_json.bms_enabled }}",
 			PayloadOn:     "true",
@@ -110,7 +79,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		config: HASwitchConfig{
 			Name:          "bms_simulation",
 			UniqueDataID:  "bms_simulation_switch_001",
-			StateTopic:    mqttBMSStateTopic,
+			StateTopic:    fmt.Sprintf(mqttBMSStateTopicPlaceholder, "bms_simulation_enabled"),
 			CommandTopic:  "go_bms/bms_simulation/set",
 			ValueTemplate: "{{ value_json.bms_simulation_enabled }}",
 			PayloadOn:     "true",
@@ -136,7 +105,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 			FriendlyName:      "Minimum Battery",
 			Name:              "minimum_battery",
 			UniqueDataID:      "minimum_battery_001",
-			StateTopic:        mqttBMSStateTopic,
+			StateTopic:        fmt.Sprintf(mqttBMSStateTopicPlaceholder, "minimum_battery"),
 			ValueTemplate:     "{{ value_json.minimum_battery }}",
 			UnitOfMeasurement: "%",
 			Min:               10,
@@ -165,7 +134,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 			FriendlyName:   "Minimum Battery Time",
 			Name:           "minimum_battery_time",
 			UniqueDataID:   "minimum_battery_time_001",
-			StateTopic:     mqttBMSStateTopic,
+			StateTopic:     fmt.Sprintf(mqttBMSStateTopicPlaceholder, "minimum_battery_time"),
 			ValueTemplate:  "{{ value_json.minimum_battery_time }}",
 			CommandTopic:   "go_bms/minimum_battery_time/set",
 			EntityCategory: HAEntityCategoryConfig,
@@ -188,7 +157,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 			FriendlyName:      "Maximum Drain for Minimum",
 			Name:              "maximum_drain_for_minimum",
 			UniqueDataID:      "maximum_drain_for_minimum_001",
-			StateTopic:        mqttBMSStateTopic,
+			StateTopic:        fmt.Sprintf(mqttBMSStateTopicPlaceholder, "maximum_drain_for_minimum"),
 			ValueTemplate:     "{{ value_json.maximum_drain_for_minimum }}",
 			UnitOfMeasurement: "W",
 			Icon:              "mdi:flash-alert-outline",
@@ -204,7 +173,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 			FriendlyName:      "Energy Cost Current",
 			Name:              "energy_cost_current",
 			UniqueDataID:      "energy_cost_current_001",
-			StateTopic:        mqttBMSStateTopic,
+			StateTopic:        fmt.Sprintf(mqttBMSStateTopicPlaceholder, "energy_cost_current"),
 			ValueTemplate:     "{{ value_json.energy_cost_current }}",
 			UnitOfMeasurement: "EUR/kWh",
 			Icon:              "mdi:cash",
@@ -220,9 +189,9 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 			FriendlyName:           "Energy Cost Forecast",
 			Name:                   "energy_cost_forecast",
 			UniqueDataID:           "energy_cost_forecast_001",
-			StateTopic:             mqttBMSStateTopic,
+			StateTopic:             fmt.Sprintf(mqttBMSStateTopicPlaceholder, "energy_cost_forecast"),
 			ValueTemplate:          "{{ value_json.energy_cost_forecast.current }}",
-			JSONAttributesTopic:    mqttBMSStateTopic,
+			JSONAttributesTopic:    fmt.Sprintf(mqttBMSStateTopicPlaceholder, "energy_cost_forecast"),
 			JSONAttributesTemplate: "{% if value_json.energy_cost_forecast is defined %}{{ {'forecast': value_json.energy_cost_forecast.forecast} | tojson }}{% endif %}",
 			UnitOfMeasurement:      "EUR/kWh",
 			Icon:                   "mdi:cash",
@@ -238,9 +207,9 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 			FriendlyName:           "Energy Cost Forecast Tomorrow",
 			Name:                   "energy_cost_forecast_tomorrow",
 			UniqueDataID:           "energy_cost_forecast_tomorrow_001",
-			StateTopic:             mqttBMSStateTopic,
+			StateTopic:             fmt.Sprintf(mqttBMSStateTopicPlaceholder, "energy_cost_forecast_tomorrow"),
 			ValueTemplate:          "{{ value_json.energy_cost_forecast_tomorrow.current }}",
-			JSONAttributesTopic:    mqttBMSStateTopic,
+			JSONAttributesTopic:    fmt.Sprintf(mqttBMSStateTopicPlaceholder, "energy_cost_forecast_tomorrow"),
 			JSONAttributesTemplate: "{% if value_json.energy_cost_forecast_tomorrow is defined %}{{ {'forecast': value_json.energy_cost_forecast_tomorrow.forecast} | tojson }}{% endif %}",
 			UnitOfMeasurement:      "EUR/kWh",
 			Icon:                   "mdi:cash",
@@ -256,7 +225,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 			FriendlyName:      "Control Duration",
 			Name:              "control_duration",
 			UniqueDataID:      "control_duration_001",
-			StateTopic:        mqttBMSStateTopic,
+			StateTopic:        fmt.Sprintf(mqttBMSStateTopicPlaceholder, "control_duration"),
 			ValueTemplate:     "{{ value_json.control_duration }}",
 			UnitOfMeasurement: "min",
 			Min:               0,
@@ -279,13 +248,57 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		},
 	}
 
+	entities[ControlTime] = HAEntityConfig{
+		configTopic: "homeassistant/sensor/go_bms/control_time_001/config",
+		config: HASensorConfig{
+			FriendlyName:  "Control Time",
+			Name:          "control_time",
+			UniqueDataID:  "control_time_001",
+			StateTopic:    fmt.Sprintf(mqttBMSStateTopicPlaceholder, "control_time"),
+			ValueTemplate: "{{ value_json.control_time }}",
+			// UnitOfMeasurement: "min",
+			DeviceClass: HADeviceClassTimestamp,
+			StateClass:  HAStateClassMeasurement,
+			Device:      device,
+		},
+	}
+
+	entities[ControlMode] = HAEntityConfig{
+		configTopic: "homeassistant/select/go_bms/control_mode_001/config",
+		config: HASelectConfig{
+			FriendlyName:  "Control Mode",
+			Name:          "control_mode",
+			UniqueDataID:  "control_mode_001",
+			StateTopic:    fmt.Sprintf(mqttBMSStateTopicPlaceholder, "control_mode"),
+			ValueTemplate: "{{ value_json.control_mode}}",
+			Options: []string{
+				string(ControlModeOptOff),
+				string(ControlModeOptDischarge),
+				string(ControlModeOptCharge),
+			},
+			EntityCategory: HAEntityCategoryConfig,
+			Icon:           "mdi:flash",
+			CommandTopic:   "go_bms/control_mode/set",
+			Device:         device,
+		},
+		subTopic: "go_bms/control_mode/set",
+		subCallback: func(c mqtt.Client, m mqtt.Message) {
+			commandPayload := string(m.Payload())
+
+			b.Publish(StateUpdate{ID: string(ControlMode), Value: commandPayload})
+			s.updateState(HAStatePayload{
+				ControlMode: commandPayload,
+			}, false)
+		},
+	}
+
 	entities[SimForceDuration] = HAEntityConfig{
 		configTopic: "homeassistant/number/go_bms/sim_force_duration_001/config",
 		config: HANumberConfig{
 			FriendlyName:      "Sim Force Duration",
 			Name:              "sim_force_duration",
 			UniqueDataID:      "sim_force_duration_001",
-			StateTopic:        mqttBMSStateTopic,
+			StateTopic:        fmt.Sprintf(mqttBMSStateTopicPlaceholder, "sim_force_duration"),
 			ValueTemplate:     "{{ value_json.sim_force_duration }}",
 			UnitOfMeasurement: "min",
 			Min:               0,
@@ -314,7 +327,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 			FriendlyName:      "Sim Force Power",
 			Name:              "sim_force_power",
 			UniqueDataID:      "sim_force_power_001",
-			StateTopic:        mqttBMSStateTopic,
+			StateTopic:        fmt.Sprintf(mqttBMSStateTopicPlaceholder, "sim_force_power"),
 			ValueTemplate:     "{{ value_json.sim_force_power }}",
 			UnitOfMeasurement: "W",
 			Min:               0,
@@ -345,7 +358,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 			FriendlyName:  "Sim Force Mode",
 			Name:          "sim_force_mode",
 			UniqueDataID:  "sim_force_mode_001",
-			StateTopic:    mqttBMSStateTopic,
+			StateTopic:    fmt.Sprintf(mqttBMSStateTopicPlaceholder, "sim_force_mode"),
 			ValueTemplate: "{{ value_json.sim_force_mode}}",
 			Options: []string{
 				"off",       // value 0
@@ -404,59 +417,82 @@ func (s *service) initEntities(ctx context.Context, b *Broadcaster) {
 
 	// Set default state values for the entities
 	go func() {
-		if !s.cfg.MQTTSetDefaults {
-			return
-		}
-		time.Sleep(2 * time.Second) // Wait for entities to be registered in HA
 
 		bmsEnabled := "false"
-		if s.batteryManagement.BMSEnabled {
+		if s.batteryManagement.GetBMSEnabled() {
 			bmsEnabled = "true"
 		}
 		bmsSimulationEnabled := "true"
-		if s.batteryManagement.BMSSimulationEnabled {
-			bmsSimulationEnabled = "true"
+		// if !s.batteryManagement.GetBMSSimulationEnabled() {
+		// 	bmsSimulationEnabled = "false"
+		// }
+
+		now := time.Now()
+		controlTimeStr := formatTimestamp(&now)
+		if s.batteryManagement.ControlTime != nil {
+			controlTimeStr = formatTimestamp(s.batteryManagement.ControlTime)
+		}
+		controlDurationStr := "0"
+		if s.batteryManagement.ControlDuration > 0 {
+			controlDurationStr = formatFloatDuration(s.batteryManagement.ControlDuration)
 		}
 
+		// set loaded values
 		statePayload := HAStatePayload{
-			BMSEnabled:             bmsEnabled,
-			BMSSimulationEnabled:   bmsSimulationEnabled,
-			BatteryDuration:        "0.0",
-			MinimumBattery:         strconv.FormatFloat(s.batteryManagement.MinimumBatteryLevel, 'f', 2, 64),
-			MinimumBatteryTime:     s.batteryManagement.MinimumBatteryTime,
-			MaximumDrainForMinimum: "0.0",
-			EnergyCostForecast: &ForcastData{
+			BMSEnabled:           bmsEnabled,
+			BMSSimulationEnabled: bmsSimulationEnabled,
+			ControlTime:          controlTimeStr,
+			ControlDuration:      controlDurationStr,
+			ControlMode:          string(ControlModeOptOff),
+		}
+
+		// set defaults
+		if s.cfg.MQTTSetDefaults {
+			statePayload.BatteryDuration = "0.0"
+			statePayload.MinimumBattery = strconv.FormatFloat(s.batteryManagement.MinimumBatteryLevel, 'f', 2, 64)
+			statePayload.MinimumBatteryTime = s.batteryManagement.MinimumBatteryTime
+			statePayload.MaximumDrainForMinimum = "0.0"
+			statePayload.EnergyCostForecast = &ForcastData{
 				Current: "0.0",
 				Forecast: []*ForcastPoint{
 					{DateTime: time.Now().UTC().Format(time.RFC3339), Value: "0.001"},
 				},
-			},
-			EnergyCostForecastTomorrow: &ForcastData{
+			}
+			statePayload.EnergyCostForecastTomorrow = &ForcastData{
 				Current: "0.0",
 				Forecast: []*ForcastPoint{
 					{DateTime: time.Now().Add(25 * time.Hour).UTC().Format(time.RFC3339), Value: "0.001"},
 				},
-			},
-			EnergyCostCurrent: "0.0",
-			ControlDuration:   "0.0",
-			SimForceDuration:  "0.0",
-			SimForceMode:      "off",
-			SimForcePower:     "0.0",
+			}
+			statePayload.EnergyCostCurrent = "0.0"
+			statePayload.SimForceDuration = "0.0"
+			statePayload.SimForceMode = "off"
+			statePayload.SimForcePower = "0.0"
 		}
-		stateBytes, _ := json.Marshal(statePayload)
-
-		s.mqttClient.Publish(mqttBMSStateTopic, 0, true, stateBytes)
-		s.logger.InfoContext(ctx, "Published initial state data", slog.String("topic", mqttBMSStateTopic), slog.String("payload", string(stateBytes)))
+		time.Sleep(2 * time.Second) // Wait for entities to be registered in HA
+		s.publishState(statePayload, true)
+		s.logger.DebugContext(ctx, "Published initial state data")
 	}()
 }
 
-func (s *service) updateState(state HAStatePayload, isSensor bool) {
-	if s.batteryManagement.GetBMSEnabled() || !isSensor {
-		stateBytes, _ := json.Marshal(state)
-		token := s.mqttClient.Publish(mqttBMSStateTopic, 0, false, stateBytes)
+func (s *service) publishState(state HAStatePayload, retained bool) {
+	stateBytes, _ := json.Marshal(state)
+	// get all attributes with values from state struct
+	keys := getPopulatedJSONFields(state)
+
+	for _, key := range keys {
+		topic := fmt.Sprintf(mqttBMSStateTopicPlaceholder, key)
+		s.logger.Debug("Updating state", slog.String("topic", topic), slog.String("state", string(stateBytes)))
+		token := s.mqttClient.Publish(topic, 0, retained, stateBytes)
 		token.Wait()
 		if token.Error() != nil {
 			s.logger.Error("Failed to publish state update", slog.Any("err", token.Error()))
 		}
+	}
+}
+
+func (s *service) updateState(state HAStatePayload, isSensor bool) {
+	if s.batteryManagement.GetBMSEnabled() || !isSensor {
+		s.publishState(state, false)
 	}
 }

@@ -14,14 +14,15 @@ import (
 )
 
 type service struct {
-	cfg               *config.Config
-	logger            *slog.Logger
-	haClient          *ha.Client
-	haWs              *ha.WSClient
-	mqttClient        mqtt.Client
-	solakon           *SolakonOne
-	batteryManagement *BatteryManagement
-	energyCharts      *energycharts.Client
+	cfg                *config.Config
+	logger             *slog.Logger
+	haClient           *ha.Client
+	haWs               *ha.WSClient
+	mqttClient         mqtt.Client
+	solakon            *SolakonOne
+	batteryManagement  *BatteryManagement
+	energyCharts       *energycharts.Client
+	priceForecastCache *energycharts.PriceForecastCache
 }
 
 const (
@@ -56,6 +57,7 @@ func New(cfg *config.Config, logger *slog.Logger) *service {
 			Config: cfg,
 			Logger: logger,
 		}),
+		priceForecastCache: energycharts.NewPriceForecastCache(),
 	}
 
 	return srv
@@ -183,4 +185,8 @@ func (s *service) initService(ctx context.Context) {
 	go s.batteryMaxDrainUntilLevel(ctx, b)
 	go s.energyChartPricing(ctx, b)
 	go s.readCurrentControls(ctx, b)
+	s.addControls(ctx, b)
+
+	time.Sleep(10 * time.Second)
+	s.logger.Info("Service initialized")
 }

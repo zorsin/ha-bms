@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"log/slog"
-	"strconv"
 	"sync"
 )
 
@@ -69,9 +68,13 @@ func (s *service) getStaticStates(ctx context.Context) bool {
 	batteryManagement := &BatteryManagement{
 		mux:                  &sync.RWMutex{},
 		BMSEnabled:           false,
-		BMSSimulationEnabled: false,
+		BMSSimulationEnabled: true,
 		MinimumBatteryLevel:  20,
 		MinimumBatteryTime:   "10:00:00",
+		ControlDuration:      0,
+		ControlTime:          nil,
+		ControlPower:         0,
+		ControlMode:          ControlModeOptOff,
 	}
 
 	totalOk := true
@@ -79,28 +82,28 @@ func (s *service) getStaticStates(ctx context.Context) bool {
 	if err != nil {
 		totalOk = false
 	}
-	solakon.BatteryCapacity, _ = strconv.ParseFloat(state.State, 64)
+	solakon.BatteryCapacity = parseFloat(state.State)
 
 	state, err = s.haClient.GetStateForEntity(ctx, sensorSolakonBatteryLevelEntityID)
 	if err != nil {
 		totalOk = false
 	}
-	solakon.Initials.BatteryLevel, _ = strconv.ParseFloat(state.State, 64)
+	solakon.Initials.BatteryLevel = parseFloat(state.State)
 	state, err = s.haClient.GetStateForEntity(ctx, sensorSolakonBatteryPowerEntityID)
 	if err != nil {
 		totalOk = false
 	}
-	solakon.Initials.BatteryPower, _ = strconv.ParseFloat(state.State, 64)
+	solakon.Initials.BatteryPower = parseFloat(state.State)
 
 	state, err = s.haClient.GetStateForEntity(ctx, string(MinumumBattery))
 	if err == nil {
-		batteryManagement.MinimumBatteryLevel, _ = strconv.ParseFloat(state.State, 64)
+		batteryManagement.MinimumBatteryLevel = parseFloat(state.State)
 	}
 	state, err = s.haClient.GetStateForEntity(ctx, string(MinumumBatteryTime))
 	if err == nil {
 		batteryManagement.MinimumBatteryTime = state.State
 	}
-
+	// BMS
 	state, err = s.haClient.GetStateForEntity(ctx, string(BMS))
 	if err == nil {
 		batteryManagement.BMSEnabled = state.State == "on"
@@ -108,6 +111,20 @@ func (s *service) getStaticStates(ctx context.Context) bool {
 	state, err = s.haClient.GetStateForEntity(ctx, string(BMSSimulation))
 	if err == nil {
 		batteryManagement.BMSSimulationEnabled = state.State == "on"
+	}
+	state, err = s.haClient.GetStateForEntity(ctx, string(ControlDuration))
+	if err == nil {
+		batteryManagement.ControlDuration = parseFloatDuration(state.State)
+	}
+	state, err = s.haClient.GetStateForEntity(ctx, string(ControlTime))
+	if err == nil {
+		if t, ok := parseTimestamp(state.State); ok {
+			batteryManagement.ControlTime = t
+		}
+	}
+	state, err = s.haClient.GetStateForEntity(ctx, string(ControlMode))
+	if err == nil {
+		batteryManagement.ControlMode = ControlModeOpt(state.State)
 	}
 
 	s.solakon = solakon

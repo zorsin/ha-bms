@@ -1,12 +1,18 @@
 package service
 
-import "sync"
+import (
+	"sync"
+	"time"
+
+	mqtt "github.com/eclipse/paho.mqtt.golang"
+)
 
 type HANumberMode string
 type HAStateClass string
 type HADeviceClass string
 type HAEntityCategory string
 type BMSEntityID string
+type ControlModeOpt string
 
 const (
 	HANumberModeBoxed  HANumberMode = "box"
@@ -23,12 +29,23 @@ const (
 	EnergyCostCurrent          BMSEntityID = "sensor.go_bms_energy_cost_current"
 	EnergyCostForecast         BMSEntityID = "sensor.go_bms_energy_cost_forecast"
 	EnergyCostForecastTomorrow BMSEntityID = "sensor.go_bms_energy_cost_forecast_tomorrow"
-	ControlDuration            BMSEntityID = "number.go_bms_control_duration"
+
+	// control
+	ControlDuration BMSEntityID = "number.go_bms_control_duration"
+	ControlTime     BMSEntityID = "sensor.go_bms_control_time"
+	ControlPower    BMSEntityID = "number.go_bms_control_power"
+	ControlMode     BMSEntityID = "select.go_bms_control_mode"
 
 	// simulation entities for testing
 	SimForceDuration BMSEntityID = "number.go_bms_sim_force_duration"
 	SimForceMode     BMSEntityID = "select.go_bms_sim_force_mode"
 	SimForcePower    BMSEntityID = "number.go_bms_sim_force_power"
+)
+
+const (
+	ControlModeOptOff       ControlModeOpt = "off"
+	ControlModeOptDischarge ControlModeOpt = "discharge"
+	ControlModeOptCharge    ControlModeOpt = "charge"
 )
 
 const (
@@ -38,11 +55,12 @@ const (
 )
 
 const (
-	HADeviceClassBattery  HADeviceClass = "battery"
-	HADeviceClassPower    HADeviceClass = "power"
-	HADeviceClassEnergy   HADeviceClass = "energy"
-	HADeviceClassDuration HADeviceClass = "duration"
-	HADeviceClassMonetary HADeviceClass = "monetary"
+	HADeviceClassBattery   HADeviceClass = "battery"
+	HADeviceClassPower     HADeviceClass = "power"
+	HADeviceClassEnergy    HADeviceClass = "energy"
+	HADeviceClassDuration  HADeviceClass = "duration"
+	HADeviceClassMonetary  HADeviceClass = "monetary"
+	HADeviceClassTimestamp HADeviceClass = "timestamp"
 )
 
 const (
@@ -143,6 +161,42 @@ type HASelectConfig struct {
 	Device          HADevice         `json:"device"`
 }
 
+type HAEntityConfig struct {
+	configTopic string
+	config      any // HASensorConfig or HASwitchConfig
+	subTopic    string
+	subCallback mqtt.MessageHandler
+}
+
+type ForcastPoint struct {
+	DateTime string `json:"datetime"`
+	Value    string `json:"value"`
+}
+
+type ForcastData struct {
+	Current  string          `json:"current"`
+	Forecast []*ForcastPoint `json:"forecast"`
+}
+
+type HAStatePayload struct {
+	BMSEnabled                 string       `json:"bms_enabled,omitempty"`
+	BMSSimulationEnabled       string       `json:"bms_simulation_enabled,omitempty"`
+	BatteryDuration            string       `json:"battery_duration,omitempty"`
+	MinimumBattery             string       `json:"minimum_battery,omitempty"`
+	MinimumBatteryTime         string       `json:"minimum_battery_time,omitempty"`
+	MaximumDrainForMinimum     string       `json:"maximum_drain_for_minimum,omitempty"`
+	EnergyCostCurrent          string       `json:"energy_cost_current,omitempty"`
+	EnergyCostForecast         *ForcastData `json:"energy_cost_forecast,omitempty"`
+	EnergyCostForecastTomorrow *ForcastData `json:"energy_cost_forecast_tomorrow,omitempty"`
+	ControlDuration            string       `json:"control_duration,omitempty"`
+	ControlTime                string       `json:"control_time,omitempty"`
+	ControlPower               string       `json:"control_power,omitempty"`
+	ControlMode                string       `json:"control_mode,omitempty"`
+	SimForceDuration           string       `json:"sim_force_duration,omitempty"`
+	SimForceMode               string       `json:"sim_force_mode,omitempty"`
+	SimForcePower              string       `json:"sim_force_power,omitempty"`
+}
+
 type SolakonOne struct {
 	// BatteryPower    float64 `json:"battery_power"`
 	BatteryCapacity   float64 `json:"battery_capacity"`
@@ -158,10 +212,14 @@ type SolakonOneInitialValues struct {
 
 type BatteryManagement struct {
 	mux                  *sync.RWMutex
-	BMSEnabled           bool    `json:"bms_enabled"`
-	BMSSimulationEnabled bool    `json:"bms_simulation_enabled"`
-	MinimumBatteryLevel  float64 `json:"minimum_battery"`
-	MinimumBatteryTime   string  `json:"minimum_battery_time"`
+	BMSEnabled           bool           `json:"bms_enabled"`
+	BMSSimulationEnabled bool           `json:"bms_simulation_enabled"`
+	MinimumBatteryLevel  float64        `json:"minimum_battery"`
+	MinimumBatteryTime   string         `json:"minimum_battery_time"`
+	ControlDuration      time.Duration  `json:"control_duration"`
+	ControlTime          *time.Time     `json:"control_time"`
+	ControlPower         float64        `json:"control_power"`
+	ControlMode          ControlModeOpt `json:"control_mode"`
 }
 
 func (bm *BatteryManagement) SetBMSEnabled(enabled bool) {
