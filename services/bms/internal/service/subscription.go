@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strconv"
+	"sync"
 )
 
 const (
@@ -11,12 +12,18 @@ const (
 	sensorSolakonBatteryPowerEntityID    = "sensor.solakon_one_batterie_leistung"
 	sensorSolakonBatteryCapacityEntityID = "sensor.solakon_one_batteriekapazitat"
 	sensorSolakonBatteryLevelEntityID    = "sensor.solakon_one_batterie_ladestand"
+	sensorSolakonForcePowerEntityID      = "number.solakon_one_modus_uberschreiben_leistung"
+	sensorSolakonForceDurationEntityID   = "number.solakon_one_modus_uberschreiben_dauer"
+	sensorSolakonForceModeEntityID       = "select.solakon_one_modus_uberschreiben"
 )
 
 func (s *service) startSubscriptions(ctx context.Context, b *Broadcaster) {
 	watchedEntities := []string{
 		sensorSolakonBatteryPowerEntityID,
 		sensorSolakonBatteryLevelEntityID,
+		sensorSolakonForcePowerEntityID,
+		sensorSolakonForceDurationEntityID,
+		sensorSolakonForceModeEntityID,
 	}
 	// Subscribe once and filter state_changed events for selected entities.
 	sub, err := s.haWs.SubscribeStateChangedMany(ctx, watchedEntities...)
@@ -60,6 +67,7 @@ func (s *service) getStaticStates(ctx context.Context) bool {
 		ACMaxAllowedPower: 800,
 	}
 	batteryManagement := &BatteryManagement{
+		mux:                  &sync.RWMutex{},
 		BMSEnabled:           false,
 		BMSSimulationEnabled: false,
 		MinimumBatteryLevel:  20,

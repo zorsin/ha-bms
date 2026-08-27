@@ -34,6 +34,10 @@ type HAStatePayload struct {
 	EnergyCostCurrent          string       `json:"energy_cost_current,omitempty"`
 	EnergyCostForecast         *ForcastData `json:"energy_cost_forecast,omitempty"`
 	EnergyCostForecastTomorrow *ForcastData `json:"energy_cost_forecast_tomorrow,omitempty"`
+	ControlDuration            string       `json:"control_duration,omitempty"`
+	SimForceDuration           string       `json:"sim_force_duration,omitempty"`
+	SimForceMode               string       `json:"sim_force_mode,omitempty"`
+	SimForcePower              string       `json:"sim_force_power,omitempty"`
 }
 
 func (s *service) initMQTTClient(ctx context.Context) error {
@@ -246,6 +250,131 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		},
 	}
 
+	entities[ControlDuration] = HAEntityConfig{
+		configTopic: "homeassistant/number/go_bms/control_duration_001/config",
+		config: HANumberConfig{
+			FriendlyName:      "Control Duration",
+			Name:              "control_duration",
+			UniqueDataID:      "control_duration_001",
+			StateTopic:        mqttBMSStateTopic,
+			ValueTemplate:     "{{ value_json.control_duration }}",
+			UnitOfMeasurement: "min",
+			Min:               0,
+			Max:               60,
+			Step:              5,
+			Mode:              HANumberModeSlider,
+			EntityCategory:    HAEntityCategoryConfig,
+			CommandTopic:      "go_bms/control_duration/set",
+			DeviceClass:       HADeviceClassDuration,
+			StateClass:        HAStateClassMeasurement,
+			Device:            device,
+		},
+		subTopic: "go_bms/control_duration/set",
+		subCallback: func(c mqtt.Client, m mqtt.Message) {
+			commandPayload := string(m.Payload())
+			b.Publish(StateUpdate{ID: string(ControlDuration), Value: commandPayload})
+			s.updateState(HAStatePayload{
+				ControlDuration: commandPayload,
+			}, false)
+		},
+	}
+
+	entities[SimForceDuration] = HAEntityConfig{
+		configTopic: "homeassistant/number/go_bms/sim_force_duration_001/config",
+		config: HANumberConfig{
+			FriendlyName:      "Sim Force Duration",
+			Name:              "sim_force_duration",
+			UniqueDataID:      "sim_force_duration_001",
+			StateTopic:        mqttBMSStateTopic,
+			ValueTemplate:     "{{ value_json.sim_force_duration }}",
+			UnitOfMeasurement: "min",
+			Min:               0,
+			Max:               120,
+			Step:              1,
+			Mode:              HANumberModeBoxed,
+			EntityCategory:    HAEntityCategoryDiagnostic,
+			CommandTopic:      "go_bms/sim_force_duration/set",
+			DeviceClass:       HADeviceClassDuration,
+			StateClass:        HAStateClassMeasurement,
+			Device:            device,
+		},
+		subTopic: "go_bms/sim_force_duration/set",
+		subCallback: func(c mqtt.Client, m mqtt.Message) {
+			commandPayload := string(m.Payload())
+			b.Publish(StateUpdate{ID: string(SimForceDuration), Value: commandPayload})
+			s.updateState(HAStatePayload{
+				SimForceDuration: commandPayload,
+			}, false)
+		},
+	}
+
+	entities[SimForcePower] = HAEntityConfig{
+		configTopic: "homeassistant/number/go_bms/sim_force_power_001/config",
+		config: HANumberConfig{
+			FriendlyName:      "Sim Force Power",
+			Name:              "sim_force_power",
+			UniqueDataID:      "sim_force_power_001",
+			StateTopic:        mqttBMSStateTopic,
+			ValueTemplate:     "{{ value_json.sim_force_power }}",
+			UnitOfMeasurement: "W",
+			Min:               0,
+			Max:               1500,
+			Step:              1,
+			Mode:              HANumberModeBoxed,
+			EntityCategory:    HAEntityCategoryDiagnostic,
+			Icon:              "mdi:flash",
+			CommandTopic:      "go_bms/sim_force_power/set",
+			DeviceClass:       HADeviceClassPower,
+			StateClass:        HAStateClassMeasurement,
+
+			Device: device,
+		},
+		subTopic: "go_bms/sim_force_power/set",
+		subCallback: func(c mqtt.Client, m mqtt.Message) {
+			commandPayload := string(m.Payload())
+			b.Publish(StateUpdate{ID: string(SimForcePower), Value: commandPayload})
+			s.updateState(HAStatePayload{
+				SimForcePower: commandPayload,
+			}, false)
+		},
+	}
+
+	entities[SimForceMode] = HAEntityConfig{
+		configTopic: "homeassistant/select/go_bms/sim_force_mode_001/config",
+		config: HASelectConfig{
+			FriendlyName:  "Sim Force Mode",
+			Name:          "sim_force_mode",
+			UniqueDataID:  "sim_force_mode_001",
+			StateTopic:    mqttBMSStateTopic,
+			ValueTemplate: "{{ value_json.sim_force_mode}}",
+			Options: []string{
+				"off",       // value 0
+				"discharge", // value 1
+				"charge",    // value 3
+			},
+			EntityCategory: HAEntityCategoryDiagnostic,
+			Icon:           "mdi:flash",
+			CommandTopic:   "go_bms/sim_force_mode/set",
+			// DeviceClass:       "",
+			// StateClass:        HAStateClassMeasurement,
+			Device: device,
+		},
+		subTopic: "go_bms/sim_force_mode/set",
+		subCallback: func(c mqtt.Client, m mqtt.Message) {
+			commandPayload := string(m.Payload())
+
+			val, ok := mapperForceModeToValue[commandPayload]
+			if !ok {
+				s.logger.Warn("Invalid Sim Force Mode value received", "value", commandPayload)
+				return
+			}
+			b.Publish(StateUpdate{ID: string(SimForceMode), Value: val})
+			s.updateState(HAStatePayload{
+				SimForceMode: commandPayload,
+			}, false)
+		},
+	}
+
 	return entities
 }
 
@@ -284,7 +413,7 @@ func (s *service) initEntities(ctx context.Context, b *Broadcaster) {
 		if s.batteryManagement.BMSEnabled {
 			bmsEnabled = "true"
 		}
-		bmsSimulationEnabled := "false"
+		bmsSimulationEnabled := "true"
 		if s.batteryManagement.BMSSimulationEnabled {
 			bmsSimulationEnabled = "true"
 		}
@@ -309,6 +438,10 @@ func (s *service) initEntities(ctx context.Context, b *Broadcaster) {
 				},
 			},
 			EnergyCostCurrent: "0.0",
+			ControlDuration:   "0.0",
+			SimForceDuration:  "0.0",
+			SimForceMode:      "off",
+			SimForcePower:     "0.0",
 		}
 		stateBytes, _ := json.Marshal(statePayload)
 
@@ -318,7 +451,7 @@ func (s *service) initEntities(ctx context.Context, b *Broadcaster) {
 }
 
 func (s *service) updateState(state HAStatePayload, isSensor bool) {
-	if s.batteryManagement.BMSEnabled || !isSensor {
+	if s.batteryManagement.GetBMSEnabled() || !isSensor {
 		stateBytes, _ := json.Marshal(state)
 		token := s.mqttClient.Publish(mqttBMSStateTopic, 0, false, stateBytes)
 		token.Wait()

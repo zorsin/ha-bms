@@ -1,5 +1,7 @@
 package service
 
+import "sync"
+
 type HANumberMode string
 type HAStateClass string
 type HADeviceClass string
@@ -21,6 +23,12 @@ const (
 	EnergyCostCurrent          BMSEntityID = "sensor.go_bms_energy_cost_current"
 	EnergyCostForecast         BMSEntityID = "sensor.go_bms_energy_cost_forecast"
 	EnergyCostForecastTomorrow BMSEntityID = "sensor.go_bms_energy_cost_forecast_tomorrow"
+	ControlDuration            BMSEntityID = "number.go_bms_control_duration"
+
+	// simulation entities for testing
+	SimForceDuration BMSEntityID = "number.go_bms_sim_force_duration"
+	SimForceMode     BMSEntityID = "select.go_bms_sim_force_mode"
+	SimForcePower    BMSEntityID = "number.go_bms_sim_force_power"
 )
 
 const (
@@ -42,6 +50,12 @@ const (
 	HAEntityCategoryDiagnostic HAEntityCategory = "diagnostic"
 	HAEntityCategoryDefault    HAEntityCategory = ""
 )
+
+var mapperForceModeToValue = map[string]string{
+	"off":       "0",
+	"discharge": "1",
+	"charge":    "3",
+}
 
 // Device metadata ties multiple entities to one device entry in HA
 type HADevice struct {
@@ -97,6 +111,8 @@ type HANumberConfig struct {
 	FriendlyName      string           `json:"friendly_name,omitempty"`
 	UnitOfMeasurement string           `json:"unit_of_measurement,omitempty"`
 	EntityCategory    HAEntityCategory `json:"entity_category,omitempty"`
+	DeviceClass       HADeviceClass    `json:"device_class,omitempty"`
+	StateClass        HAStateClass     `json:"state_class,omitempty"`
 	Device            HADevice         `json:"device"`
 }
 
@@ -113,6 +129,20 @@ type HATimeConfig struct {
 	Device            HADevice         `json:"device"`
 }
 
+type HASelectConfig struct {
+	Name            string           `json:"name"`
+	UniqueDataID    string           `json:"unique_id"`
+	StateTopic      string           `json:"state_topic"`
+	CommandTopic    string           `json:"command_topic"`
+	Icon            string           `json:"icon,omitempty"`
+	FriendlyName    string           `json:"friendly_name,omitempty"`
+	Options         []string         `json:"options"`
+	ValueTemplate   string           `json:"value_template,omitempty"`
+	CommandTemplate string           `json:"command_template,omitempty"`
+	EntityCategory  HAEntityCategory `json:"entity_category,omitempty"`
+	Device          HADevice         `json:"device"`
+}
+
 type SolakonOne struct {
 	// BatteryPower    float64 `json:"battery_power"`
 	BatteryCapacity   float64 `json:"battery_capacity"`
@@ -127,8 +157,33 @@ type SolakonOneInitialValues struct {
 }
 
 type BatteryManagement struct {
+	mux                  *sync.RWMutex
 	BMSEnabled           bool    `json:"bms_enabled"`
 	BMSSimulationEnabled bool    `json:"bms_simulation_enabled"`
 	MinimumBatteryLevel  float64 `json:"minimum_battery"`
 	MinimumBatteryTime   string  `json:"minimum_battery_time"`
+}
+
+func (bm *BatteryManagement) SetBMSEnabled(enabled bool) {
+	bm.mux.Lock()
+	defer bm.mux.Unlock()
+	bm.BMSEnabled = enabled
+}
+
+func (bm *BatteryManagement) SetBMSSimulationEnabled(enabled bool) {
+	bm.mux.Lock()
+	defer bm.mux.Unlock()
+	bm.BMSSimulationEnabled = enabled
+}
+
+func (bm *BatteryManagement) GetBMSEnabled() bool {
+	bm.mux.RLock()
+	defer bm.mux.RUnlock()
+	return bm.BMSEnabled
+}
+
+func (bm *BatteryManagement) GetBMSSimulationEnabled() bool {
+	bm.mux.RLock()
+	defer bm.mux.RUnlock()
+	return bm.BMSSimulationEnabled
 }

@@ -182,4 +182,5 @@ func (s *service) initService(ctx context.Context) {
 	go s.batteryDrainByBatteryPower(ctx, b)
 	go s.batteryMaxDrainUntilLevel(ctx, b)
 	go s.energyChartPricing(ctx, b)
+	go s.readCurrentControls(ctx, b)
 }
