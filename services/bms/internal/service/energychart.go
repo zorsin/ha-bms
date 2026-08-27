@@ -37,10 +37,8 @@ func (s *service) energyChartDemo(ctx context.Context, b *Broadcaster) {
 }
 
 func (s *service) energyChartPricing(ctx context.Context, b *Broadcaster) {
-	// forcast of the current day
-	go s.energyChartTodayForcast(ctx)
-	// forcast of the next day
-	go s.energyChartTomorrowForcast(ctx)
+	// forcast of the current day & next day
+	go s.updateForcasts(ctx)
 	// get the current price
 	go s.energyChartCurrentPrice(ctx, b)
 
@@ -85,7 +83,39 @@ func (s *service) energyChartCurrentPrice(ctx context.Context, b *Broadcaster) {
 	}
 }
 
+func (s *service) updateForcasts(ctx context.Context) {
+
+	runForcasts := func() {
+		s.logger.Debug("Updating forcasts")
+		go s.energyChartTodayForcast(ctx)
+		go s.energyChartTomorrowForcast(ctx)
+	}
+
+	runForcasts()
+
+	// wait until full hour to update the forcast data
+	now := time.Now()
+	nextHour := now.Truncate(time.Hour).Add(time.Hour).Add(10 * time.Second)
+	timeUntilNextHour := time.Until(nextHour)
+	s.logger.Info("Waiting until next hour to update forcasts", slog.Any("timeUntilNextHour", timeUntilNextHour))
+	time.Sleep(timeUntilNextHour)
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	// run before the first tick runs in given time
+	runForcasts()
+	for {
+		select {
+		case <-ctx.Done():
+			s.logger.Info("Done - stopping update forcasts", slog.Any("err", ctx.Err()))
+			return
+		case <-ticker.C:
+			runForcasts()
+		}
+	}
+}
+
 func (s *service) energyChartTodayForcast(ctx context.Context) {
+	// TODO: fill cache with the forcast data
 	s.logger.Debug("Starting energy chart pricing service")
 	// call the energy chart api to get the pricing data
 	// get the current forcast

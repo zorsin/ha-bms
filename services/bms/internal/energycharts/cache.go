@@ -3,14 +3,23 @@ package energycharts
 import (
 	"fmt"
 	"math"
+	"sort"
 	"sync"
 	"time"
 )
 
+const (
+	slotDuration = 15 * time.Minute
+)
+
 type PriceForecastCache struct {
-	mux            *sync.RWMutex
-	UpdatedAt      *time.Time
-	DayAheadPrices []*DayAheadPrice
+	mux                    *sync.RWMutex
+	UpdatedAt              *time.Time
+	DayAheadValidAt        *time.Time
+	DayAheadPrices         []*DayAheadPrice
+	TomorrowUpdatedAt      *time.Time
+	TomorrowDayAheadPrices []*DayAheadPrice
+	TomorrowValidAt        *time.Time
 }
 
 type DayAheadPrice struct {
@@ -20,9 +29,13 @@ type DayAheadPrice struct {
 
 func NewPriceForecastCache() *PriceForecastCache {
 	return &PriceForecastCache{
-		mux:            &sync.RWMutex{},
-		UpdatedAt:      nil,
-		DayAheadPrices: []*DayAheadPrice{},
+		mux:                    &sync.RWMutex{},
+		UpdatedAt:              nil,
+		DayAheadValidAt:        nil,
+		DayAheadPrices:         []*DayAheadPrice{},
+		TomorrowUpdatedAt:      nil,
+		TomorrowDayAheadPrices: []*DayAheadPrice{},
+		TomorrowValidAt:        nil,
 	}
 }
 
@@ -30,26 +43,20 @@ func (c *PriceForecastCache) Insert(key string, priceData []PriceData) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
-	prices := make([]*DayAheadPrice, 0, len(priceData))
-	for _, data := range priceData {
-		val, ok := data.Values[key]
-		if !ok || val == nil {
-			continue
-		}
-
-		timestamp, err := time.Parse(time.RFC3339, data.Timestamp)
-		if err != nil {
-			continue
-		}
-		prices = append(prices, &DayAheadPrice{
-			Timestamp: timestamp,
-			Value:     *val / 1000.0, // convert from EUR/MWh to EUR/kWh
-		})
-	}
-
-	c.DayAheadPrices = prices
+	c.DayAheadPrices = toDayAheadPrices(priceData, key)
+	c.DayAheadValidAt = &c.DayAheadPrices[0].Timestamp
 	now := time.Now()
 	c.UpdatedAt = &now
+}
+
+func (c *PriceForecastCache) InsertTomorrow(key string, priceData []PriceData) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	c.TomorrowDayAheadPrices = toDayAheadPrices(priceData, key)
+	c.TomorrowValidAt = &c.TomorrowDayAheadPrices[0].Timestamp
+	now := time.Now()
+	c.TomorrowUpdatedAt = &now
 }
 
 // GetLowestPriceForDuration returns the time window with the lowest average price
@@ -120,11 +127,7 @@ func (c *PriceForecastCache) GetBestChargingSpots(chargeToReach float64, chargin
 		return nil, nil
 	}
 
-	slotDuration := 15 * time.Minute
 	slotEnergyKWh := (chargingPower * slotDuration.Hours()) / 1000.0
-	if slotEnergyKWh <= 0 {
-		return nil, fmt.Errorf("chargingPower is too low for a 15-minute slot")
-	}
 
 	remaining := chargeToReach
 	used := make([]bool, len(c.DayAheadPrices))
@@ -184,4 +187,51 @@ func anyUsed(used []bool, start, end int) bool {
 		}
 	}
 	return false
+}
+
+// GetLowestPrice returns the lowest price inside the cache. Returns nil if no prices are available.
+func (c *PriceForecastCache) GetLowestPrice() (*DayAheadPrice, error) {
+	c.mux.RLock()
+	defer c.mux.RUnlock()
+
+	return getLowestPrice(c.DayAheadPrices)
+}
+
+func toDayAheadPrices(prices []PriceData, key string) []*DayAheadPrice {
+	dayAheadPrices := make([]*DayAheadPrice, 0, len(prices))
+	for _, data := range prices {
+		val, ok := data.Values[key]
+		if !ok || val == nil {
+			continue
+		}
+
+		timestamp, err := time.Parse(time.RFC3339, data.Timestamp)
+		if err != nil {
+			continue
+		}
+		dayAheadPrices = append(dayAheadPrices, &DayAheadPrice{
+			Timestamp: timestamp,
+			Value:     *val / 1000.0, // convert from EUR/MWh to EUR/kWh
+		})
+	}
+	// sort by timestamp to ensure the prices are in chronological order
+	sort.Slice(dayAheadPrices, func(i, j int) bool {
+		return dayAheadPrices[i].Timestamp.Before(dayAheadPrices[j].Timestamp)
+	})
+	return dayAheadPrices
+}
+
+func getLowestPrice(prices []*DayAheadPrice) (*DayAheadPrice, error) {
+	if len(prices) == 0 {
+		return nil, nil
+	}
+
+	lowest := prices[0]
+	for _, price := range prices[1:] {
+		if price.Value < lowest.Value {
+			lowest = price
+		}
+	}
+
+	return lowest, nil
 }
