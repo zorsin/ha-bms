@@ -197,6 +197,13 @@ func (c *PriceForecastCache) GetLowestPrice() (*DayAheadPrice, error) {
 	return getLowestPrice(c.DayAheadPrices)
 }
 
+func (c *PriceForecastCache) GetLowestPriceTomorrow() (*DayAheadPrice, error) {
+	c.mux.RLock()
+	defer c.mux.RUnlock()
+
+	return getLowestPrice(c.TomorrowDayAheadPrices)
+}
+
 func toDayAheadPrices(prices []PriceData, key string) []*DayAheadPrice {
 	dayAheadPrices := make([]*DayAheadPrice, 0, len(prices))
 	for _, data := range prices {
