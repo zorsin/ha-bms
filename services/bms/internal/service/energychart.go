@@ -28,7 +28,7 @@ func (s *service) energyChartDemo(ctx context.Context) {
 
 	s.logger.Info("Demo mode: Average price for 1 hour", slog.Any("start", start), slog.Any("end", end), slog.Any("price", price))
 
-	spots, err := priceForcastCache.GetBestChargingSpots(6, 1000)
+	spots, err := priceForcastCache.GetBestChargingSpots(6, 1000, time.Now())
 	if err != nil {
 		s.logger.Error("Failed to get best charging spots", slog.Any("err", err))
 		return

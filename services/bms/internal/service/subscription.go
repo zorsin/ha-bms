@@ -109,11 +109,11 @@ func (s *service) getStaticStates(ctx context.Context) bool {
 	//
 	state, err = s.haClient.GetStateForEntity(ctx, string(BMS))
 	if err == nil {
-		batteryManagement.BMSEnabled = state.State == "on"
+		batteryManagement.BMSEnabled = state.State == "true"
 	}
 	state, err = s.haClient.GetStateForEntity(ctx, string(BMSSimulation))
 	if err == nil {
-		batteryManagement.BMSSimulationEnabled = state.State == "on"
+		batteryManagement.BMSSimulationEnabled = state.State == "true"
 	}
 	state, err = s.haClient.GetStateForEntity(ctx, string(ControlDuration))
 	if err == nil {
@@ -125,18 +125,18 @@ func (s *service) getStaticStates(ctx context.Context) bool {
 			batteryManagement.ControlTime = t
 		}
 	}
-	state, err = s.haClient.GetStateForEntity(ctx, string(ControlMode))
-	if err == nil {
-		batteryManagement.ControlMode = ControlModeOpt(state.State)
-	}
+	// state, err = s.haClient.GetStateForEntity(ctx, string(ControlMode))
+	// if err == nil {
+	// 	batteryManagement.ControlMode = ControlModeOpt(state.State)
+	// }
 	state, err = s.haClient.GetStateForEntity(ctx, string(ControlPower))
 	if err == nil {
 		batteryManagement.ControlPower = parseFloat(state.State)
 	}
-	state, err = s.haClient.GetStateForEntity(ctx, string(AutoMode))
-	if err == nil {
-		batteryManagement.AutoMode = AutoModeOpt(state.State)
-	}
+	// state, err = s.haClient.GetStateForEntity(ctx, string(AutoMode))
+	// if err == nil {
+	// 	batteryManagement.AutoMode = AutoModeOpt(state.State)
+	// }
 
 	s.solakon = solakon
 	s.batteryManagement = batteryManagement

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"reflect"
 	"strconv"
 	"strings"
@@ -108,4 +109,13 @@ func getPopulatedJSONFields(v interface{}) []string {
 	}
 
 	return fieldNames
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
+	}
 }

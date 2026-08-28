@@ -1,7 +1,6 @@
 package service
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -73,9 +72,9 @@ func (b *Broadcaster) Publish(update StateUpdate) {
 		for ch := range subs {
 			select {
 			case ch <- update:
-			default:
-				// Buffer full: drop or handle backpressure to avoid blocking WS reader
-				fmt.Println("[Warning] Dropped update for slow subscriber")
+				// default:
+				// 	// Buffer full: drop or handle backpressure to avoid blocking WS reader
+				// 	fmt.Println("[Warning] Dropped update for slow subscriber")
 			}
 		}
 	}

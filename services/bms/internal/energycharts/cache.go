@@ -113,7 +113,7 @@ func (c *PriceForecastCache) GetLowestPriceForDuration(duration time.Duration) (
 
 // GetBestChargingSpots returns the cheapest charging windows needed to reach
 // chargeToReach kWh at chargingPower W. Each slot represents 15 minutes.
-func (c *PriceForecastCache) GetBestChargingSpots(chargeToReach float64, chargingPower float64) ([][2]time.Time, error) {
+func (c *PriceForecastCache) GetBestChargingSpots(chargeToReach float64, chargingPower float64, start time.Time) ([][2]time.Time, error) {
 	c.mux.RLock()
 	defer c.mux.RUnlock()
 
@@ -127,10 +127,23 @@ func (c *PriceForecastCache) GetBestChargingSpots(chargeToReach float64, chargin
 		return nil, nil
 	}
 
+	cutoff := time.Now()
+	if start.After(cutoff) {
+		cutoff = start
+	}
+	firstEligible := sort.Search(len(c.DayAheadPrices), func(index int) bool {
+		return !c.DayAheadPrices[index].Timestamp.Before(cutoff)
+	})
+	// spot now active
+	prices := c.DayAheadPrices[firstEligible-1:]
+	if len(prices) == 0 {
+		return nil, nil
+	}
+
 	slotEnergyKWh := (chargingPower * slotDuration.Hours()) / 1000.0
 
 	remaining := chargeToReach
-	used := make([]bool, len(c.DayAheadPrices))
+	used := make([]bool, len(prices))
 	spots := make([][2]time.Time, 0)
 
 	for remaining > 0 {
@@ -138,21 +151,21 @@ func (c *PriceForecastCache) GetBestChargingSpots(chargeToReach float64, chargin
 		if requiredSlots <= 0 {
 			requiredSlots = 1
 		}
-		if requiredSlots > len(c.DayAheadPrices) {
-			requiredSlots = len(c.DayAheadPrices)
+		if requiredSlots > len(prices) {
+			requiredSlots = len(prices)
 		}
 
 		bestStart := -1
 		bestEnd := -1
 		bestAvg := math.Inf(1)
 
-		for i := 0; i+requiredSlots <= len(c.DayAheadPrices); i++ {
+		for i := 0; i+requiredSlots <= len(prices); i++ {
 			if anyUsed(used, i, i+requiredSlots) {
 				continue
 			}
 
 			windowSum := 0.0
-			for _, price := range c.DayAheadPrices[i : i+requiredSlots] {
+			for _, price := range prices[i : i+requiredSlots] {
 				windowSum += price.Value
 			}
 			avg := windowSum / float64(requiredSlots)
@@ -171,8 +184,8 @@ func (c *PriceForecastCache) GetBestChargingSpots(chargeToReach float64, chargin
 			used[i] = true
 		}
 
-		start := c.DayAheadPrices[bestStart].Timestamp
-		end := c.DayAheadPrices[bestEnd].Timestamp.Add(slotDuration)
+		start := prices[bestStart].Timestamp
+		end := prices[bestEnd].Timestamp.Add(slotDuration)
 		spots = append(spots, [2]time.Time{start, end})
 		remaining -= float64(requiredSlots) * slotEnergyKWh
 	}

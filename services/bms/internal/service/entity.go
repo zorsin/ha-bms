@@ -460,9 +460,9 @@ func (s *service) initEntities(ctx context.Context) {
 			BMSSimulationEnabled: bmsSimulationEnabled,
 			ControlTime:          controlTimeStr,
 			ControlDuration:      controlDurationStr,
-			ControlMode:          string(ControlModeOptOff),
-			ControlPower:         formatFloat(0),
-			AutoMode:             string(AutoModeOptOff),
+			ControlMode:          string(s.batteryManagement.ControlMode),
+			ControlPower:         formatFloat(s.batteryManagement.ControlPower),
+			AutoMode:             string(s.batteryManagement.AutoMode),
 		}
 
 		// set defaults
