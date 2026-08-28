@@ -13,6 +13,8 @@ type HADeviceClass string
 type HAEntityCategory string
 type BMSEntityID string
 type ControlModeOpt string
+type AutoModeOpt string
+type SolakonForceMode string
 
 const (
 	HANumberModeBoxed  HANumberMode = "box"
@@ -35,6 +37,7 @@ const (
 	ControlTime     BMSEntityID = "sensor.go_bms_control_time"
 	ControlPower    BMSEntityID = "number.go_bms_control_power"
 	ControlMode     BMSEntityID = "select.go_bms_control_mode"
+	AutoMode        BMSEntityID = "select.go_bms_auto_mode"
 
 	// simulation entities for testing
 	SimForceDuration BMSEntityID = "number.go_bms_sim_force_duration"
@@ -46,6 +49,11 @@ const (
 	ControlModeOptOff       ControlModeOpt = "off"
 	ControlModeOptDischarge ControlModeOpt = "discharge"
 	ControlModeOptCharge    ControlModeOpt = "charge"
+	ControlModeOptAuto      ControlModeOpt = "auto"
+
+	AutoModeOptOff              AutoModeOpt = "off"
+	AutoModeOptChargeWhenNeeded AutoModeOpt = "charge_when_needed"
+	AutoModeOptForceTargetDrain AutoModeOpt = "force_target_drain"
 )
 
 const (
@@ -69,10 +77,10 @@ const (
 	HAEntityCategoryDefault    HAEntityCategory = ""
 )
 
-var mapperForceModeToValue = map[string]string{
-	"off":       "0",
-	"discharge": "1",
-	"charge":    "3",
+var mapperForceModeToValue = map[ControlModeOpt]SolakonForceMode{
+	ControlModeOptOff:       SolakonForceModeOff,
+	ControlModeOptDischarge: SolakonForceModeDischarge,
+	ControlModeOptCharge:    SolakonForceModeCharge,
 }
 
 // Device metadata ties multiple entities to one device entry in HA
@@ -195,7 +203,14 @@ type HAStatePayload struct {
 	SimForceDuration           string       `json:"sim_force_duration,omitempty"`
 	SimForceMode               string       `json:"sim_force_mode,omitempty"`
 	SimForcePower              string       `json:"sim_force_power,omitempty"`
+	AutoMode                   string       `json:"auto_mode,omitempty"`
 }
+
+const (
+	SolakonForceModeOff       SolakonForceMode = "0"
+	SolakonForceModeDischarge SolakonForceMode = "1"
+	SolakonForceModeCharge    SolakonForceMode = "3"
+)
 
 type SolakonOne struct {
 	// BatteryPower    float64 `json:"battery_power"`
@@ -220,6 +235,7 @@ type BatteryManagement struct {
 	ControlTime          *time.Time     `json:"control_time"`
 	ControlPower         float64        `json:"control_power"`
 	ControlMode          ControlModeOpt `json:"control_mode"`
+	AutoMode             AutoModeOpt    `json:"auto_mode"`
 }
 
 func (bm *BatteryManagement) SetBMSEnabled(enabled bool) {

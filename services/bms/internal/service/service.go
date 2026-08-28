@@ -23,6 +23,7 @@ type service struct {
 	batteryManagement  *BatteryManagement
 	energyCharts       *energycharts.Client
 	priceForecastCache *energycharts.PriceForecastCache
+	broad              *Broadcaster
 }
 
 const (
@@ -58,6 +59,7 @@ func New(cfg *config.Config, logger *slog.Logger) *service {
 			Logger: logger,
 		}),
 		priceForecastCache: energycharts.NewPriceForecastCache(),
+		broad:              NewBroadcaster(),
 	}
 
 	return srv
@@ -80,8 +82,7 @@ func (s *service) Start(ctx context.Context) {
 	} else {
 		s.logger.Info("BMS is not active, skipping service initialization")
 
-		b := NewBroadcaster()
-		s.energyChartDemo(ctx, b)
+		s.energyChartDemo(ctx)
 		return
 	}
 	go s.initService(ctx)
@@ -167,25 +168,25 @@ func (s *service) PrintHAConfig(ctx context.Context) *ha.Config {
 
 func (s *service) initService(ctx context.Context) {
 	s.logger.Info("Initializing service")
-	b := NewBroadcaster()
 	// get statics states
 	ok := s.getStaticStates(ctx)
 	if !ok {
 		s.logger.Warn("Failed to get static states")
 		return
 	}
-	s.initEntities(ctx, b)
+	s.initEntities(ctx)
 	// wait for entities to be registered in HA
 	time.Sleep(initializationWaitTime)
 	// get initial states
 	// subscribe to HA events
-	go s.startSubscriptions(ctx, b)
+	go s.startSubscriptions(ctx)
 
-	go s.batteryDrainByBatteryPower(ctx, b)
-	go s.batteryMaxDrainUntilLevel(ctx, b)
-	go s.energyChartPricing(ctx, b)
-	go s.readCurrentControls(ctx, b)
-	s.addControls(ctx, b)
+	go s.manageStates(ctx)
+	go s.batteryDrainByBatteryPower(ctx)
+	go s.batteryMaxDrainUntilLevel(ctx)
+	go s.energyChartPricing(ctx)
+	go s.readCurrentControls(ctx)
+	s.addControls(ctx)
 
 	time.Sleep(10 * time.Second)
 	s.logger.Info("Service initialized")

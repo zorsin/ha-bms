@@ -8,7 +8,7 @@ import (
 	"github.com/zorsin/ha-bms/services/bms/internal/energycharts"
 )
 
-func (s *service) energyChartDemo(ctx context.Context, b *Broadcaster) {
+func (s *service) energyChartDemo(ctx context.Context) {
 	s.logger.Info("Starting demo mode")
 	// load data from demo json file
 	resp, err := energycharts.LoadPriceResponseFromFile("../../_ignore_/response_price.jsonc")
@@ -36,17 +36,17 @@ func (s *service) energyChartDemo(ctx context.Context, b *Broadcaster) {
 	s.logger.Info("Demo mode: Best charging spots", slog.Any("spots", spots))
 }
 
-func (s *service) energyChartPricing(ctx context.Context, b *Broadcaster) {
+func (s *service) energyChartPricing(ctx context.Context) {
 	// forcast of the current day & next day
 	go s.updateForcasts(ctx)
 	// get the current price
-	go s.energyChartCurrentPrice(ctx, b)
+	go s.energyChartCurrentPrice(ctx)
 
 	// get the lowest price for the day
 	// get the lowest price for the next day 08:00 (may night load is cheaper)
 }
 
-func (s *service) energyChartCurrentPrice(ctx context.Context, b *Broadcaster) {
+func (s *service) energyChartCurrentPrice(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
@@ -65,7 +65,7 @@ func (s *service) energyChartCurrentPrice(ctx context.Context, b *Broadcaster) {
 		valueEurKWh := *val / 1000.0 // convert from EUR/MWh to EUR/kWh
 		value := formatFloat(valueEurKWh)
 		s.logger.Debug("Current energy chart price", slog.Any("value", value))
-		b.Publish(StateUpdate{ID: string(EnergyCostCurrent), Value: value})
+		// s.broad.Publish(StateUpdate{ID: string(EnergyCostCurrent), Value: value})
 		s.updateState(HAStatePayload{
 			EnergyCostCurrent: value,
 		}, false)

@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 // StateUpdate represents the data payload from your WebSocket.
@@ -13,14 +14,23 @@ type StateUpdate struct {
 
 type BroadcastSubscribers map[chan StateUpdate]struct{}
 
+const duplicateSuppressionWindow = time.Second
+
+type broadcastValue struct {
+	value     string
+	published time.Time
+}
+
 type Broadcaster struct {
 	mu          sync.RWMutex
 	subscribers map[string]BroadcastSubscribers
+	lastValues  map[string]broadcastValue
 }
 
 func NewBroadcaster() *Broadcaster {
 	return &Broadcaster{
 		subscribers: make(map[string]BroadcastSubscribers),
+		lastValues:  make(map[string]broadcastValue),
 	}
 }
 
@@ -51,10 +61,15 @@ func (b *Broadcaster) Unsubscribe(ch chan StateUpdate) {
 }
 
 func (b *Broadcaster) Publish(update StateUpdate) {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	if subs, ok := b.subscribers[update.ID]; ok {
+		now := time.Now()
+		if previous, ok := b.lastValues[update.ID]; ok && previous.value == update.Value && now.Sub(previous.published) < duplicateSuppressionWindow {
+			return
+		}
+		b.lastValues[update.ID] = broadcastValue{value: update.Value, published: now}
 		for ch := range subs {
 			select {
 			case ch <- update:

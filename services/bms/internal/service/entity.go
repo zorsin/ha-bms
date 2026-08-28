@@ -31,7 +31,7 @@ func (s *service) initMQTTClient(ctx context.Context) error {
 	return nil
 }
 
-func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityID]HAEntityConfig {
+func (s *service) createEntities(device HADevice) map[BMSEntityID]HAEntityConfig {
 	entities := make(map[BMSEntityID]HAEntityConfig)
 
 	entities[BatteryDuration] = HAEntityConfig{
@@ -66,11 +66,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		subTopic: "go_bms/bms/set",
 		subCallback: func(c mqtt.Client, m mqtt.Message) {
 			commandPayload := string(m.Payload())
-			s.batteryManagement.BMSEnabled = commandPayload == "true"
-			s.updateState(HAStatePayload{
-				BMSEnabled: commandPayload,
-			}, false)
-			b.Publish(StateUpdate{ID: string(BMS), Value: commandPayload})
+			s.broad.Publish(StateUpdate{ID: string(BMS), Value: commandPayload})
 		},
 	}
 
@@ -91,11 +87,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		subTopic: "go_bms/bms_simulation/set",
 		subCallback: func(c mqtt.Client, m mqtt.Message) {
 			commandPayload := string(m.Payload())
-			s.batteryManagement.BMSSimulationEnabled = commandPayload == "true"
-			s.updateState(HAStatePayload{
-				BMSSimulationEnabled: commandPayload,
-			}, false)
-			b.Publish(StateUpdate{ID: string(BMSSimulation), Value: commandPayload})
+			s.broad.Publish(StateUpdate{ID: string(BMSSimulation), Value: commandPayload})
 		},
 	}
 
@@ -121,10 +113,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		subTopic: "go_bms/minimum_battery/set",
 		subCallback: func(c mqtt.Client, m mqtt.Message) {
 			commandPayload := string(m.Payload())
-			b.Publish(StateUpdate{ID: string(MinumumBattery), Value: commandPayload})
-			s.updateState(HAStatePayload{
-				MinimumBattery: commandPayload,
-			}, false)
+			s.broad.Publish(StateUpdate{ID: string(MinumumBattery), Value: commandPayload})
 		},
 	}
 
@@ -144,10 +133,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		subTopic: "go_bms/minimum_battery_time/set",
 		subCallback: func(c mqtt.Client, m mqtt.Message) {
 			commandPayload := string(m.Payload())
-			b.Publish(StateUpdate{ID: string(MinumumBatteryTime), Value: commandPayload})
-			s.updateState(HAStatePayload{
-				MinimumBatteryTime: commandPayload,
-			}, false)
+			s.broad.Publish(StateUpdate{ID: string(MinumumBatteryTime), Value: commandPayload})
 		},
 	}
 
@@ -241,10 +227,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		subTopic: "go_bms/control_duration/set",
 		subCallback: func(c mqtt.Client, m mqtt.Message) {
 			commandPayload := string(m.Payload())
-			b.Publish(StateUpdate{ID: string(ControlDuration), Value: commandPayload})
-			s.updateState(HAStatePayload{
-				ControlDuration: commandPayload,
-			}, false)
+			s.broad.Publish(StateUpdate{ID: string(ControlDuration), Value: commandPayload})
 		},
 	}
 
@@ -275,6 +258,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 				string(ControlModeOptOff),
 				string(ControlModeOptDischarge),
 				string(ControlModeOptCharge),
+				string(ControlModeOptAuto),
 			},
 			EntityCategory: HAEntityCategoryConfig,
 			Icon:           "mdi:flash",
@@ -284,11 +268,34 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		subTopic: "go_bms/control_mode/set",
 		subCallback: func(c mqtt.Client, m mqtt.Message) {
 			commandPayload := string(m.Payload())
+			s.broad.Publish(StateUpdate{ID: string(ControlMode), Value: commandPayload})
+		},
+	}
 
-			b.Publish(StateUpdate{ID: string(ControlMode), Value: commandPayload})
-			s.updateState(HAStatePayload{
-				ControlMode: commandPayload,
-			}, false)
+	entities[ControlPower] = HAEntityConfig{
+		configTopic: "homeassistant/number/go_bms/control_power_001/config",
+		config: HANumberConfig{
+			FriendlyName:      "Control Power",
+			Name:              "control_power",
+			UniqueDataID:      "control_power_001",
+			StateTopic:        fmt.Sprintf(mqttBMSStateTopicPlaceholder, "control_power"),
+			ValueTemplate:     "{{ value_json.control_power }}",
+			UnitOfMeasurement: "W",
+			Min:               0,
+			Max:               1200,
+			Step:              10,
+			Mode:              HANumberModeBoxed,
+			EntityCategory:    HAEntityCategoryConfig,
+			Icon:              "mdi:flash",
+			CommandTopic:      "go_bms/control_power/set",
+			DeviceClass:       HADeviceClassPower,
+			StateClass:        HAStateClassMeasurement,
+			Device:            device,
+		},
+		subTopic: "go_bms/control_power/set",
+		subCallback: func(c mqtt.Client, m mqtt.Message) {
+			commandPayload := string(m.Payload())
+			s.broad.Publish(StateUpdate{ID: string(ControlPower), Value: commandPayload})
 		},
 	}
 
@@ -314,10 +321,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		subTopic: "go_bms/sim_force_duration/set",
 		subCallback: func(c mqtt.Client, m mqtt.Message) {
 			commandPayload := string(m.Payload())
-			b.Publish(StateUpdate{ID: string(SimForceDuration), Value: commandPayload})
-			s.updateState(HAStatePayload{
-				SimForceDuration: commandPayload,
-			}, false)
+			s.broad.Publish(StateUpdate{ID: string(SimForceDuration), Value: commandPayload})
 		},
 	}
 
@@ -345,10 +349,7 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		subTopic: "go_bms/sim_force_power/set",
 		subCallback: func(c mqtt.Client, m mqtt.Message) {
 			commandPayload := string(m.Payload())
-			b.Publish(StateUpdate{ID: string(SimForcePower), Value: commandPayload})
-			s.updateState(HAStatePayload{
-				SimForcePower: commandPayload,
-			}, false)
+			s.broad.Publish(StateUpdate{ID: string(SimForcePower), Value: commandPayload})
 		},
 	}
 
@@ -361,9 +362,9 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 			StateTopic:    fmt.Sprintf(mqttBMSStateTopicPlaceholder, "sim_force_mode"),
 			ValueTemplate: "{{ value_json.sim_force_mode}}",
 			Options: []string{
-				"off",       // value 0
-				"discharge", // value 1
-				"charge",    // value 3
+				string(ControlModeOptOff),
+				string(ControlModeOptDischarge),
+				string(ControlModeOptCharge),
 			},
 			EntityCategory: HAEntityCategoryDiagnostic,
 			Icon:           "mdi:flash",
@@ -375,23 +376,40 @@ func (s *service) createEntities(device HADevice, b *Broadcaster) map[BMSEntityI
 		subTopic: "go_bms/sim_force_mode/set",
 		subCallback: func(c mqtt.Client, m mqtt.Message) {
 			commandPayload := string(m.Payload())
+			s.broad.Publish(StateUpdate{ID: string(SimForceMode), Value: commandPayload})
+		},
+	}
 
-			val, ok := mapperForceModeToValue[commandPayload]
-			if !ok {
-				s.logger.Warn("Invalid Sim Force Mode value received", "value", commandPayload)
-				return
-			}
-			b.Publish(StateUpdate{ID: string(SimForceMode), Value: val})
-			s.updateState(HAStatePayload{
-				SimForceMode: commandPayload,
-			}, false)
+	entities[AutoMode] = HAEntityConfig{
+		configTopic: "homeassistant/select/go_bms/auto_mode_001/config",
+		config: HASelectConfig{
+			FriendlyName:  "Auto Mode",
+			Name:          "auto_mode",
+			UniqueDataID:  "auto_mode_001",
+			StateTopic:    fmt.Sprintf(mqttBMSStateTopicPlaceholder, "auto_mode"),
+			ValueTemplate: "{{ value_json.auto_mode}}",
+			Options: []string{
+				string(AutoModeOptOff),
+				string(AutoModeOptChargeWhenNeeded),
+				string(AutoModeOptForceTargetDrain),
+			},
+			EntityCategory: HAEntityCategoryConfig,
+			Icon:           "mdi:flash",
+			CommandTopic:   "go_bms/auto_mode/set",
+			Device:         device,
+		},
+		subTopic: "go_bms/auto_mode/set",
+		subCallback: func(c mqtt.Client, m mqtt.Message) {
+			commandPayload := string(m.Payload())
+
+			s.broad.Publish(StateUpdate{ID: string(AutoMode), Value: commandPayload})
 		},
 	}
 
 	return entities
 }
 
-func (s *service) initEntities(ctx context.Context, b *Broadcaster) {
+func (s *service) initEntities(ctx context.Context) {
 	myDevice := HADevice{
 		Identifiers:  []string{"go_bms_service"}, // Unique device ID
 		Name:         "Go BMS",
@@ -400,7 +418,7 @@ func (s *service) initEntities(ctx context.Context, b *Broadcaster) {
 		SwVersion:    "1.0.0",
 		// SuggestedArea: "BMS",
 	}
-	entities := s.createEntities(myDevice, b)
+	entities := s.createEntities(myDevice)
 
 	// Publish Entity Config (Must be set to Retain: true)
 	for key, entity := range entities {
@@ -417,7 +435,6 @@ func (s *service) initEntities(ctx context.Context, b *Broadcaster) {
 
 	// Set default state values for the entities
 	go func() {
-
 		bmsEnabled := "false"
 		if s.batteryManagement.GetBMSEnabled() {
 			bmsEnabled = "true"
@@ -444,6 +461,8 @@ func (s *service) initEntities(ctx context.Context, b *Broadcaster) {
 			ControlTime:          controlTimeStr,
 			ControlDuration:      controlDurationStr,
 			ControlMode:          string(ControlModeOptOff),
+			ControlPower:         formatFloat(0),
+			AutoMode:             string(AutoModeOptOff),
 		}
 
 		// set defaults
@@ -494,5 +513,94 @@ func (s *service) publishState(state HAStatePayload, retained bool) {
 func (s *service) updateState(state HAStatePayload, isSensor bool) {
 	if s.batteryManagement.GetBMSEnabled() || !isSensor {
 		s.publishState(state, false)
+	}
+}
+
+func (s *service) manageStates(ctx context.Context) {
+	chBatteryDuration := s.broad.Subscribe(string(BatteryDuration), 1)
+	chBMSEnabled := s.broad.Subscribe(string(BMS), 1)
+	chBMSSimulationEnabled := s.broad.Subscribe(string(BMSSimulation), 1)
+	chMinimumBattery := s.broad.Subscribe(string(MinumumBattery), 1)
+	chMinimumBatteryTime := s.broad.Subscribe(string(MinumumBatteryTime), 1)
+	chMaximumDrainForMinimum := s.broad.Subscribe(string(MaximumDrainForMinimum), 1)
+	chControlDuration := s.broad.Subscribe(string(ControlDuration), 1)
+	chControlTime := s.broad.Subscribe(string(ControlTime), 1)
+	chControlMode := s.broad.Subscribe(string(ControlMode), 1)
+	chControlPower := s.broad.Subscribe(string(ControlPower), 1)
+	chAutoMode := s.broad.Subscribe(string(AutoMode), 1)
+	chSimForceDuration := s.broad.Subscribe(string(SimForceDuration), 1)
+	chSimForcePower := s.broad.Subscribe(string(SimForcePower), 1)
+	chSimForceMode := s.broad.Subscribe(string(SimForceMode), 1)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case v := <-chBatteryDuration:
+			s.updateState(HAStatePayload{
+				BatteryDuration: v.Value,
+			}, true)
+		case v := <-chBMSEnabled:
+			s.batteryManagement.SetBMSEnabled(v.Value == "true")
+			s.updateState(HAStatePayload{
+				BMSEnabled: v.Value,
+			}, false)
+		case v := <-chBMSSimulationEnabled:
+			s.batteryManagement.SetBMSSimulationEnabled(v.Value == "true")
+			s.updateState(HAStatePayload{
+				BMSSimulationEnabled: v.Value,
+			}, false)
+		case v := <-chMinimumBattery:
+			s.updateState(HAStatePayload{
+				MinimumBattery: v.Value,
+			}, false)
+		case v := <-chMinimumBatteryTime:
+			s.updateState(HAStatePayload{
+				MinimumBatteryTime: v.Value,
+			}, false)
+		case v := <-chMaximumDrainForMinimum:
+			s.updateState(HAStatePayload{
+				MaximumDrainForMinimum: v.Value,
+			}, true)
+		case v := <-chControlDuration:
+			s.batteryManagement.ControlDuration = parseFloatDuration(v.Value)
+			s.updateState(HAStatePayload{
+				ControlDuration: v.Value,
+			}, false)
+		case v := <-chControlTime:
+			if ct, ok := parseTimestamp(v.Value); ok {
+				s.batteryManagement.ControlTime = ct
+				s.updateState(HAStatePayload{
+					ControlTime: v.Value,
+				}, false)
+			}
+		case v := <-chControlMode:
+			s.batteryManagement.ControlMode = ControlModeOpt(v.Value)
+			s.updateState(HAStatePayload{
+				ControlMode: v.Value,
+			}, false)
+		case v := <-chControlPower:
+			s.batteryManagement.ControlPower = parseFloat(v.Value)
+			s.updateState(HAStatePayload{
+				ControlPower: v.Value,
+			}, false)
+		case v := <-chAutoMode:
+			s.batteryManagement.AutoMode = AutoModeOpt(v.Value)
+			s.updateState(HAStatePayload{
+				AutoMode: v.Value,
+			}, false)
+		case v := <-chSimForceDuration:
+			s.updateState(HAStatePayload{
+				SimForceDuration: v.Value,
+			}, false)
+		case v := <-chSimForcePower:
+			s.updateState(HAStatePayload{
+				SimForcePower: v.Value,
+			}, false)
+		case v := <-chSimForceMode:
+			s.updateState(HAStatePayload{
+				SimForceMode: v.Value,
+			}, false)
+		}
 	}
 }

@@ -13,11 +13,11 @@ import (
 // 2. select.solakon_one_modus_uberschreiben | force_mode -> 0 off, 1 discharge, 3 charge
 // 3. number.solakon_one_modus_uberschreiben_leistung | force_power -> output power
 
-func (s *service) readCurrentControls(ctx context.Context, b *Broadcaster) {
-	chForceDuration := b.Subscribe(sensorSolakonForceDurationEntityID, 1)
-	chForceMode := b.Subscribe(sensorSolakonForceModeEntityID, 1)
-	chForcePower := b.Subscribe(sensorSolakonForcePowerEntityID, 1)
-	chSimForceMode := b.Subscribe(string(SimForceMode), 1)
+func (s *service) readCurrentControls(ctx context.Context) {
+	chForceDuration := s.broad.Subscribe(sensorSolakonForceDurationEntityID, 1)
+	chForceMode := s.broad.Subscribe(sensorSolakonForceModeEntityID, 1)
+	chForcePower := s.broad.Subscribe(sensorSolakonForcePowerEntityID, 1)
+	chSimForceMode := s.broad.Subscribe(string(SimForceMode), 1)
 
 	for {
 		select {
@@ -25,45 +25,26 @@ func (s *service) readCurrentControls(ctx context.Context, b *Broadcaster) {
 			return
 		case forceDuration := <-chForceDuration:
 			// 42.0
-			s.logger.Info("Force duration update", "value", forceDuration.Value)
+			s.logger.Info("CurrentControls: Force duration update", "value", forceDuration.Value)
 		case forceMode := <-chForceMode:
 			// off = 0, discharge = 1, charge = 3
-			s.logger.Info("Force mode update", "value", forceMode.Value)
+			s.logger.Info("CurrentControls: Force mode update", "value", forceMode.Value)
 		case forcePower := <-chForcePower:
 			// 230
-			s.logger.Info("Force power update", "value", forcePower.Value)
+			s.logger.Info("CurrentControls: Force power update", "value", forcePower.Value)
 		case simForceMode := <-chSimForceMode:
 			// off = 0, discharge = 1, charge = 3
-			s.logger.Info("Sim Force Mode update", "value", simForceMode.Value)
+			s.logger.Info("CurrentControls: Sim Force Mode update", "value", simForceMode.Value)
 		}
 	}
 }
 
-func (s *service) addControls(ctx context.Context, b *Broadcaster) {
-	go s.setSimForceDuration(ctx, b)
-	go s.handleControlMode(ctx, b)
-	go s.handleControlTime(ctx, b)
+func (s *service) addControls(ctx context.Context) {
+	go s.handleControlMode(ctx)
+	go s.handleControlTime(ctx)
 }
 
-func (s *service) setSimForceDuration(ctx context.Context, b *Broadcaster) {
-	chControlDuration := b.Subscribe(string(ControlDuration), 1)
-	controlDuration := "0"
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case v := <-chControlDuration:
-			controlDuration = v.Value
-		}
-
-		b.Publish(StateUpdate{ID: string(SimForceDuration), Value: controlDuration})
-		s.updateState(HAStatePayload{
-			SimForceDuration: controlDuration,
-		}, true)
-	}
-}
-
-func (s *service) setControlTime(ctx context.Context, b *Broadcaster) {
+func (s *service) setControlTime(ctx context.Context) {
 	controlDuration := s.batteryManagement.ControlDuration
 	bmsActive := s.batteryManagement.GetBMSEnabled()
 
@@ -75,14 +56,11 @@ func (s *service) setControlTime(ctx context.Context, b *Broadcaster) {
 	controlTime := now.Add(controlDuration)
 	s.batteryManagement.ControlTime = &controlTime
 	controlTimeStr := formatTimestamp(&controlTime)
-	b.Publish(StateUpdate{ID: string(ControlTime), Value: controlTimeStr})
-	s.updateState(HAStatePayload{
-		ControlTime: controlTimeStr,
-	}, true)
+	s.broad.Publish(StateUpdate{ID: string(ControlTime), Value: controlTimeStr})
 }
 
-func (s *service) handleControlTime(ctx context.Context, b *Broadcaster) {
-	chControlTime := b.Subscribe(string(ControlTime), 1)
+func (s *service) handleControlTime(ctx context.Context) {
+	chControlTime := s.broad.Subscribe(string(ControlTime), 1)
 	var controlTime *time.Time
 	for {
 		select {
@@ -110,18 +88,17 @@ func (s *service) handleControlTime(ctx context.Context, b *Broadcaster) {
 	}
 }
 
-func (s *service) handleControlMode(ctx context.Context, b *Broadcaster) {
-	chControlMode := b.Subscribe(string(ControlMode), 1)
-	chBMSActive := b.Subscribe(string(BMS), 1)
+func (s *service) handleControlMode(ctx context.Context) {
+	chControlMode := s.broad.Subscribe(string(ControlMode), 1)
+	chBMSActive := s.broad.Subscribe(string(BMS), 1)
 	bmsActive := s.batteryManagement.GetBMSEnabled()
-
+	controlMode := s.batteryManagement.ControlMode
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case v := <-chControlMode:
-			controlMode := ControlModeOpt(v.Value)
-			s.batteryManagement.ControlMode = controlMode
+			controlMode = ControlModeOpt(v.Value)
 		case v := <-chBMSActive:
 			bmsActive = v.Value == "true"
 		}
@@ -130,30 +107,29 @@ func (s *service) handleControlMode(ctx context.Context, b *Broadcaster) {
 			continue
 		}
 
-		switch s.batteryManagement.ControlMode {
+		switch controlMode {
 		case ControlModeOptOff:
 			s.logger.Info("Control mode set to off, resetting control time and duration")
+			s.resetMode(ctx)
 			continue
 		case ControlModeOptDischarge:
 			s.logger.Info("Control mode set to discharge, setting control time and duration")
-			//
+			s.setControlTime(ctx)
+			// TODO: discharge
 		case ControlModeOptCharge:
 			s.logger.Info("Control mode set to charge, setting control time and duration")
-			// TODO: battery power
-			s.setControlTime(ctx, b)
-			s.chargeBattery(ctx, 800, s.batteryManagement.ControlDuration)
+			s.setControlTime(ctx)
+			s.chargeBattery(ctx, s.batteryManagement.ControlPower, s.batteryManagement.ControlDuration)
 		}
 	}
 }
 
 func (s *service) resetMode(ctx context.Context) {
-	s.updateState(HAStatePayload{
-		ControlMode:      string(ControlModeOptOff),
-		ControlTime:      "",
-		SimForceDuration: formatFloatDuration(0),
-		SimForceMode:     "off",
-		SimForcePower:    formatFloat(0),
-	}, false)
+	s.broad.Publish(StateUpdate{ID: string(ControlMode), Value: string(ControlModeOptOff)})
+	s.broad.Publish(StateUpdate{ID: string(ControlTime), Value: ""})
+	s.broad.Publish(StateUpdate{ID: string(SimForceDuration), Value: formatFloatDuration(0)})
+	s.broad.Publish(StateUpdate{ID: string(SimForceMode), Value: string(ControlModeOptOff)})
+	s.broad.Publish(StateUpdate{ID: string(SimForcePower), Value: formatFloat(0)})
 
 	if s.batteryManagement.GetBMSSimulationEnabled() {
 		s.logger.Info("Skipping reset for active control, BMS simulation is enabled")
@@ -188,11 +164,9 @@ func (s *service) resetMode(ctx context.Context) {
 }
 
 func (s *service) chargeBattery(ctx context.Context, power float64, duration time.Duration) {
-	s.updateState(HAStatePayload{
-		SimForceDuration: formatFloatDuration(duration),
-		SimForceMode:     "charge",
-		SimForcePower:    formatFloat(power),
-	}, true)
+	s.broad.Publish(StateUpdate{ID: string(SimForceDuration), Value: formatFloatDuration(duration)})
+	s.broad.Publish(StateUpdate{ID: string(SimForceMode), Value: string(ControlModeOptCharge)})
+	s.broad.Publish(StateUpdate{ID: string(SimForcePower), Value: formatFloat(power)})
 
 	if s.batteryManagement.GetBMSSimulationEnabled() {
 		s.logger.Info("Skipping charge battery, BMS simulation is enabled")

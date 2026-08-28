@@ -6,20 +6,18 @@ import (
 	"time"
 )
 
-func (s *service) batteryDrainByBatteryPower(ctx context.Context, b *Broadcaster) {
+func (s *service) batteryDrainByBatteryPower(ctx context.Context) {
 
-	chDrain := b.Subscribe(sensorSolakonBatteryPowerEntityID, 1)
-	chLevel := b.Subscribe(sensorSolakonBatteryLevelEntityID, 1)
-	chBMS := b.Subscribe(string(BMS), 1)
+	chDrain := s.broad.Subscribe(sensorSolakonBatteryPowerEntityID, 1)
+	chLevel := s.broad.Subscribe(sensorSolakonBatteryLevelEntityID, 1)
+	chBMS := s.broad.Subscribe(string(BMS), 1)
 
 	drain := s.solakon.Initials.BatteryPower
 	level := s.solakon.Initials.BatteryLevel
 
 	calculateAndPublish := func() {
 		if drain <= 0 || level <= 0 {
-			s.updateState(HAStatePayload{
-				BatteryDuration: "0.0",
-			}, true)
+			s.broad.Publish(StateUpdate{ID: string(BatteryDuration), Value: "0.0"})
 			return
 		}
 		// calculates battery duration in hours
@@ -27,9 +25,7 @@ func (s *service) batteryDrainByBatteryPower(ctx context.Context, b *Broadcaster
 
 		s.logger.Debug("Battery duration calculated", slog.Float64("duration", duration))
 
-		s.updateState(HAStatePayload{
-			BatteryDuration: formatFloat(duration),
-		}, true)
+		s.broad.Publish(StateUpdate{ID: string(BatteryDuration), Value: formatFloat(duration)})
 	}
 
 	calculateAndPublish()
@@ -50,12 +46,12 @@ func (s *service) batteryDrainByBatteryPower(ctx context.Context, b *Broadcaster
 
 }
 
-func (s *service) batteryMaxDrainUntilLevel(ctx context.Context, b *Broadcaster) {
-	chLevel := b.Subscribe(sensorSolakonBatteryLevelEntityID, 1)
-	chDrain := b.Subscribe(sensorSolakonBatteryPowerEntityID, 1)
-	chMinLevel := b.Subscribe(string(MinumumBattery), 1)
-	chMinTime := b.Subscribe(string(MinumumBatteryTime), 1)
-	chBMS := b.Subscribe(string(BMS), 1)
+func (s *service) batteryMaxDrainUntilLevel(ctx context.Context) {
+	chLevel := s.broad.Subscribe(sensorSolakonBatteryLevelEntityID, 1)
+	chDrain := s.broad.Subscribe(sensorSolakonBatteryPowerEntityID, 1)
+	chMinLevel := s.broad.Subscribe(string(MinumumBattery), 1)
+	chMinTime := s.broad.Subscribe(string(MinumumBatteryTime), 1)
+	chBMS := s.broad.Subscribe(string(BMS), 1)
 
 	drain := 0.0
 	level := s.solakon.Initials.BatteryLevel
@@ -71,9 +67,7 @@ func (s *service) batteryMaxDrainUntilLevel(ctx context.Context, b *Broadcaster)
 		if minLevel > level || drain <= 10 {
 			// if level is lower as min
 			// if drain is lower as 10W
-			s.updateState(HAStatePayload{
-				MaximumDrainForMinimum: "0.0",
-			}, true)
+			s.broad.Publish(StateUpdate{ID: string(MaximumDrainForMinimum), Value: "0.0"})
 			return
 		}
 		usableWattHours := s.solakon.BatteryCapacity * 1000 * (level - minLevel) / 100 * s.solakon.BatteryEfficiency
@@ -89,9 +83,7 @@ func (s *service) batteryMaxDrainUntilLevel(ctx context.Context, b *Broadcaster)
 			maxDrain = s.solakon.ACMaxAllowedPower
 		}
 
-		s.updateState(HAStatePayload{
-			MaximumDrainForMinimum: formatFloat(maxDrain),
-		}, true)
+		s.broad.Publish(StateUpdate{ID: string(MaximumDrainForMinimum), Value: formatFloat(maxDrain)})
 	}
 
 	calculateAndPublish()

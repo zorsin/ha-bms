@@ -16,7 +16,7 @@ const (
 	sensorSolakonForceModeEntityID       = "select.solakon_one_modus_uberschreiben"
 )
 
-func (s *service) startSubscriptions(ctx context.Context, b *Broadcaster) {
+func (s *service) startSubscriptions(ctx context.Context) {
 	watchedEntities := []string{
 		sensorSolakonBatteryPowerEntityID,
 		sensorSolakonBatteryLevelEntityID,
@@ -54,7 +54,7 @@ func (s *service) startSubscriptions(ctx context.Context, b *Broadcaster) {
 			if data.OldState != nil {
 				oldState = data.OldState.State
 			}
-			b.Publish(StateUpdate{ID: data.EntityID, Value: data.NewState.State})
+			s.broad.Publish(StateUpdate{ID: data.EntityID, Value: data.NewState.State})
 			s.logger.Debug("HA event received", slog.String("entity_id", data.EntityID), slog.String("old_state", oldState), slog.String("new_state", data.NewState.State))
 		}
 	}
@@ -75,6 +75,7 @@ func (s *service) getStaticStates(ctx context.Context) bool {
 		ControlTime:          nil,
 		ControlPower:         0,
 		ControlMode:          ControlModeOptOff,
+		AutoMode:             AutoModeOptOff,
 	}
 
 	totalOk := true
@@ -103,7 +104,9 @@ func (s *service) getStaticStates(ctx context.Context) bool {
 	if err == nil {
 		batteryManagement.MinimumBatteryTime = state.State
 	}
+	//
 	// BMS
+	//
 	state, err = s.haClient.GetStateForEntity(ctx, string(BMS))
 	if err == nil {
 		batteryManagement.BMSEnabled = state.State == "on"
@@ -125,6 +128,14 @@ func (s *service) getStaticStates(ctx context.Context) bool {
 	state, err = s.haClient.GetStateForEntity(ctx, string(ControlMode))
 	if err == nil {
 		batteryManagement.ControlMode = ControlModeOpt(state.State)
+	}
+	state, err = s.haClient.GetStateForEntity(ctx, string(ControlPower))
+	if err == nil {
+		batteryManagement.ControlPower = parseFloat(state.State)
+	}
+	state, err = s.haClient.GetStateForEntity(ctx, string(AutoMode))
+	if err == nil {
+		batteryManagement.AutoMode = AutoModeOpt(state.State)
 	}
 
 	s.solakon = solakon
