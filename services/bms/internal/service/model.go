@@ -33,11 +33,13 @@ const (
 	EnergyCostForecastTomorrow BMSEntityID = "sensor.go_bms_energy_cost_forecast_tomorrow"
 
 	// control
-	ControlDuration BMSEntityID = "number.go_bms_control_duration"
-	ControlTime     BMSEntityID = "sensor.go_bms_control_time"
-	ControlPower    BMSEntityID = "number.go_bms_control_power"
-	ControlMode     BMSEntityID = "select.go_bms_control_mode"
-	AutoMode        BMSEntityID = "select.go_bms_auto_mode"
+	ControlDuration     BMSEntityID = "number.go_bms_control_duration"
+	ControlTime         BMSEntityID = "sensor.go_bms_control_time"
+	ControlPower        BMSEntityID = "number.go_bms_control_power"
+	ControlMode         BMSEntityID = "select.go_bms_control_mode"
+	AutoMode            BMSEntityID = "select.go_bms_auto_mode"
+	AutoMaxChargeLevel  BMSEntityID = "number.go_bms_auto_max_charge_level"
+	AutoMaxChargeEnergy BMSEntityID = "sensor.go_bms_auto_max_charge_energy"
 
 	// simulation entities for testing
 	SimForceDuration BMSEntityID = "number.go_bms_sim_force_duration"
@@ -204,6 +206,8 @@ type HAStatePayload struct {
 	SimForceMode               string       `json:"sim_force_mode,omitempty"`
 	SimForcePower              string       `json:"sim_force_power,omitempty"`
 	AutoMode                   string       `json:"auto_mode,omitempty"`
+	AutoMaxChargeLevel         string       `json:"auto_max_charge_level,omitempty"`
+	AutoMaxChargeEnergy        string       `json:"auto_max_charge_energy,omitempty"`
 }
 
 const (
@@ -236,6 +240,7 @@ type BatteryManagement struct {
 	ControlPower         float64        `json:"control_power"`
 	ControlMode          ControlModeOpt `json:"control_mode"`
 	AutoMode             AutoModeOpt    `json:"auto_mode"`
+	AutoMaxChargeLevel   float64        `json:"auto_max_charge_level"`
 }
 
 func (bm *BatteryManagement) SetBMSEnabled(enabled bool) {

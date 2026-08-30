@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 )
@@ -62,7 +63,8 @@ func (s *service) handleControlTime(ctx context.Context) {
 	chControlTime := s.broad.Subscribe(string(ControlTime), 1)
 	var controlTime *time.Time
 
-	defer s.resetMode(ctx)
+	// use non cancalable context to ensure that the reset happens even if the main context is canceled
+	defer s.resetMode(context.Background())
 	for {
 		select {
 		case <-ctx.Done():
@@ -117,7 +119,7 @@ func (s *service) handleControlMode(ctx context.Context) {
 		case ControlModeOptDischarge:
 			s.logger.Info("Control mode set to discharge, setting control time and duration")
 			s.setControlTime(ctx)
-			// TODO: discharge
+			s.dischargeBattery(ctx, s.batteryManagement.ControlPower, s.batteryManagement.ControlDuration)
 		case ControlModeOptCharge:
 			s.logger.Info("Control mode set to charge, setting control time and duration")
 			s.setControlTime(ctx)
@@ -172,24 +174,39 @@ func (s *service) handleAutoMode(ctx context.Context) {
 
 func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 	chLevel := s.broad.Subscribe(sensorSolakonBatteryLevelEntityID, 1)
+	chMaxChargeLevel := s.broad.Subscribe(string(AutoMaxChargeLevel), 1)
 	level := s.solakon.Initials.BatteryLevel
+	maxChargeLevel := s.batteryManagement.AutoMaxChargeLevel
 	batteryCapacity := s.solakon.BatteryCapacity
-	batteryLimit := min(6.1, batteryCapacity) // kWh //TODO: replace with config value
+
 	chargingPower := s.batteryManagement.ControlPower
 	isCharging := false
 
 	// TODO: check if charging is needed, or expected PV energy is enough to charge the battery
 
 	doCharging := func() {
-		batteryLevel := batteryCapacity * (level / 100.0)
-		amountToCharge := batteryLimit - batteryLevel
+		limit := min(maxChargeLevel, 99) // cap for safety
+		// current energy in battery
+		batteryEnergy := batteryCapacity * (level / 100.0)
+		chargeEnergy := batteryCapacity * (limit / 100.0)
+		amountToCharge := chargeEnergy - batteryEnergy
 		if amountToCharge <= 0 {
-			s.logger.Info("Battery is fully charged, resetting control time and duration")
+			s.logger.Info("Battery is fully charged, resetting control time and duration",
+				slog.Float64("level", level),
+				slog.Float64("limit", limit),
+			)
 			s.resetMode(ctx)
 			isCharging = false
 			return
 		}
-		s.logger.Info("AutoMode ChargeWhenNeeded", slog.Float64("amount", amountToCharge), slog.Float64("batteryLevel", batteryLevel), slog.Float64("level", level))
+		s.logger.Info("AutoMode ChargeWhenNeeded",
+			slog.Float64("amount",
+				amountToCharge),
+			slog.Float64("batteryEnergy", batteryEnergy),
+			slog.Float64("level", level),
+			slog.Float64("chargeEnergy", chargeEnergy),
+			slog.Float64("limit", limit),
+		)
 		now := time.Now()
 		spots, err := s.priceForecastCache.GetBestChargingSpots(amountToCharge, chargingPower, now)
 		if err != nil || len(spots) == 0 {
@@ -205,7 +222,7 @@ func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 			s.chargeBattery(ctx, chargingPower, duration)
 			isCharging = true
 		}
-
+		fmt.Println("AutoMode ChargeWhenNeeded: Current level:", level, "Max charge level:", maxChargeLevel, "Is charging:", isCharging)
 	}
 	doCharging()
 
@@ -215,8 +232,9 @@ func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 			return
 		case v := <-chLevel:
 			level = parseFloat(v.Value)
+		case v := <-chMaxChargeLevel:
+			maxChargeLevel = parseFloat(v.Value)
 		}
-
 		doCharging()
 	}
 }
@@ -258,7 +276,7 @@ func (s *service) chargeBattery(ctx context.Context, power float64, duration tim
 		"value": formatFloatDuration(duration),
 	})
 	if err != nil {
-		s.logger.Error("Failed to set force duration", slog.Any("err", err))
+		s.logger.Error("Charge: Failed to set force duration", slog.Any("err", err))
 		return
 	}
 	// 3. number.solakon_one_modus_uberschreiben_leistung | force_power -> output power
@@ -266,7 +284,7 @@ func (s *service) chargeBattery(ctx context.Context, power float64, duration tim
 		"value": formatFloat(power),
 	})
 	if err != nil {
-		s.logger.Error("Failed to set force power", slog.Any("err", err))
+		s.logger.Error("Charge: Failed to set force power", slog.Any("err", err))
 		return
 	}
 	// 2. select.solakon_one_modus_uberschreiben | force_mode -> 0 off, 1 discharge, 3 charge
@@ -274,7 +292,42 @@ func (s *service) chargeBattery(ctx context.Context, power float64, duration tim
 		"option": string(SolakonForceModeCharge),
 	})
 	if err != nil {
-		s.logger.Error("Failed to set force mode", slog.Any("err", err))
+		s.logger.Error("Charge: Failed to set force mode", slog.Any("err", err))
+		return
+	}
+}
+
+func (s *service) dischargeBattery(ctx context.Context, power float64, duration time.Duration) {
+	s.broad.Publish(StateUpdate{ID: string(SimForceDuration), Value: formatFloatDuration(duration)})
+	s.broad.Publish(StateUpdate{ID: string(SimForceMode), Value: string(ControlModeOptDischarge)})
+	s.broad.Publish(StateUpdate{ID: string(SimForcePower), Value: formatFloat(power)})
+
+	if s.batteryManagement.GetBMSSimulationEnabled() {
+		s.logger.Info("Skipping discharge battery, BMS simulation is enabled")
+		return
+	}
+	// number.solakon_one_modus_uberschreiben_dauer | force_duration -> time
+	_, err := s.haClient.CallServiceForEntity(ctx, "number", "set_value", sensorSolakonForceDurationEntityID, map[string]interface{}{
+		"value": formatFloatDuration(duration),
+	})
+	if err != nil {
+		s.logger.Error("Discharge: Failed to set force duration", slog.Any("err", err))
+		return
+	}
+	// number.solakon_one_modus_uberschreiben_leistung | force_power -> output power
+	_, err = s.haClient.CallServiceForEntity(ctx, "number", "set_value", sensorSolakonForcePowerEntityID, map[string]interface{}{
+		"value": formatFloat(power),
+	})
+	if err != nil {
+		s.logger.Error("Discharge: Failed to set force power", slog.Any("err", err))
+		return
+	}
+	// select.solakon_one_modus_uberschreiben | force_mode -> 0 off, 1 discharge, 3 charge
+	_, err = s.haClient.CallServiceForEntity(ctx, "select", "select_option", sensorSolakonForceModeEntityID, map[string]interface{}{
+		"option": string(SolakonForceModeDischarge),
+	})
+	if err != nil {
+		s.logger.Error("Discharge: Failed to set force mode", slog.Any("err", err))
 		return
 	}
 }

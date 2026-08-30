@@ -406,6 +406,51 @@ func (s *service) createEntities(device HADevice) map[BMSEntityID]HAEntityConfig
 		},
 	}
 
+	entities[AutoMaxChargeLevel] = HAEntityConfig{
+		configTopic: "homeassistant/number/go_bms/auto_max_charge_level_001/config",
+		config: HANumberConfig{
+			FriendlyName:      "Auto Max Charge Level",
+			Name:              "auto_max_charge_level",
+			UniqueDataID:      "auto_max_charge_level_001",
+			StateTopic:        fmt.Sprintf(mqttBMSStateTopicPlaceholder, "auto_max_charge_level"),
+			ValueTemplate:     "{{ value_json.auto_max_charge_level }}",
+			UnitOfMeasurement: "%",
+			Min:               20,
+			Max:               100,
+			Step:              1,
+			Mode:              HANumberModeSlider,
+			EntityCategory:    HAEntityCategoryConfig,
+			Icon:              "mdi:battery-charging-80",
+			CommandTopic:      "go_bms/auto_max_charge_level/set",
+			DeviceClass:       HADeviceClassBattery,
+			StateClass:        HAStateClassMeasurement,
+
+			Device: device,
+		},
+		subTopic: "go_bms/auto_max_charge_level/set",
+		subCallback: func(c mqtt.Client, m mqtt.Message) {
+			commandPayload := string(m.Payload())
+			s.logger.Info("AutoMaxChargeLevel set", slog.String("value", commandPayload))
+			s.broad.Publish(StateUpdate{ID: string(AutoMaxChargeLevel), Value: commandPayload})
+		},
+	}
+
+	entities[AutoMaxChargeEnergy] = HAEntityConfig{
+		configTopic: "homeassistant/sensor/go_bms/auto_max_charge_energy_001/config",
+		config: HASensorConfig{
+			FriendlyName:      "Auto Max Charge Energy",
+			Name:              "auto_max_charge_energy",
+			UniqueDataID:      "auto_max_charge_energy_001",
+			StateTopic:        fmt.Sprintf(mqttBMSStateTopicPlaceholder, "auto_max_charge_energy"),
+			ValueTemplate:     "{{ value_json.auto_max_charge_energy }}",
+			UnitOfMeasurement: "Wh",
+			Icon:              "mdi:battery-charging-80",
+			DeviceClass:       HADeviceClassEnergy,
+			StateClass:        HAStateClassMeasurement,
+			Device:            device,
+		},
+	}
+
 	return entities
 }
 
@@ -440,9 +485,6 @@ func (s *service) initEntities(ctx context.Context) {
 			bmsEnabled = "true"
 		}
 		bmsSimulationEnabled := "true"
-		// if !s.batteryManagement.GetBMSSimulationEnabled() {
-		// 	bmsSimulationEnabled = "false"
-		// }
 
 		now := time.Now()
 		controlTimeStr := formatTimestamp(&now)
@@ -463,6 +505,8 @@ func (s *service) initEntities(ctx context.Context) {
 			ControlMode:          string(s.batteryManagement.ControlMode),
 			ControlPower:         formatFloat(s.batteryManagement.ControlPower),
 			AutoMode:             string(s.batteryManagement.AutoMode),
+			AutoMaxChargeLevel:   formatFloat(s.batteryManagement.AutoMaxChargeLevel),
+			AutoMaxChargeEnergy:  formatFloat(s.solakon.BatteryCapacity * (s.batteryManagement.AutoMaxChargeLevel / 100)),
 		}
 
 		// set defaults
@@ -531,6 +575,7 @@ func (s *service) manageStates(ctx context.Context) {
 	chSimForceDuration := s.broad.Subscribe(string(SimForceDuration), 1)
 	chSimForcePower := s.broad.Subscribe(string(SimForcePower), 1)
 	chSimForceMode := s.broad.Subscribe(string(SimForceMode), 1)
+	chAutoModeMaxChargeLevel := s.broad.Subscribe(string(AutoMaxChargeLevel), 1)
 
 	for {
 		select {
@@ -600,6 +645,13 @@ func (s *service) manageStates(ctx context.Context) {
 		case v := <-chSimForceMode:
 			s.updateState(HAStatePayload{
 				SimForceMode: v.Value,
+			}, false)
+		case v := <-chAutoModeMaxChargeLevel:
+			s.logger.Info("Updating AutoMaxChargeLevel", slog.String("value", v.Value))
+			s.batteryManagement.AutoMaxChargeLevel = parseFloat(v.Value)
+			s.updateState(HAStatePayload{
+				AutoMaxChargeLevel:  v.Value,
+				AutoMaxChargeEnergy: formatFloat(s.solakon.BatteryCapacity * 1000 * (s.batteryManagement.AutoMaxChargeLevel / 100)),
 			}, false)
 		}
 	}
