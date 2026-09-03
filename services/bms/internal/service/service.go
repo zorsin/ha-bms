@@ -24,6 +24,7 @@ type service struct {
 	energyCharts       *energycharts.Client
 	priceForecastCache *energycharts.PriceForecastCache
 	broad              *Broadcaster
+	solarProduction    *SolarProductionForecast
 }
 
 const (
@@ -60,6 +61,7 @@ func New(cfg *config.Config, logger *slog.Logger) *service {
 		}),
 		priceForecastCache: energycharts.NewPriceForecastCache(),
 		broad:              NewBroadcaster(),
+		solarProduction:    &SolarProductionForecast{},
 	}
 
 	return srv

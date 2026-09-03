@@ -225,8 +225,14 @@ type SolakonOne struct {
 }
 
 type SolakonOneInitialValues struct {
-	BatteryPower float64 `json:"battery_power"`
-	BatteryLevel float64 `json:"battery_level"`
+	BatteryPower     float64 `json:"battery_power"`
+	BatteryLevel     float64 `json:"battery_level"`
+	DailyTotalEnergy float64 `json:"daily_total_energy"`
+}
+
+type SolarProductionForecast struct {
+	EnergyProductionToday          float64 `json:"energy_production_today"`
+	EnergyProductionTodayRemaining float64 `json:"energy_production_today_remaining"`
 }
 
 type BatteryManagement struct {

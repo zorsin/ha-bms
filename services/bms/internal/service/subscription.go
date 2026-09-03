@@ -14,6 +14,11 @@ const (
 	sensorSolakonForcePowerEntityID      = "number.solakon_one_modus_uberschreiben_leistung"
 	sensorSolakonForceDurationEntityID   = "number.solakon_one_modus_uberschreiben_dauer"
 	sensorSolakonForceModeEntityID       = "select.solakon_one_modus_uberschreiben"
+	sensorSolakonDailyEnergyEntityID     = "sensor.solakon_one_tagliche_energie"
+
+	// solar energy forecast
+	sensorSolarEnergyProductionTodayEntityID          = "sensor.energy_production_today"
+	sensorSolarEnergyProductionTodayRemainingEntityID = "sensor.energy_production_today_remaining"
 )
 
 func (s *service) startSubscriptions(ctx context.Context) {
@@ -23,6 +28,9 @@ func (s *service) startSubscriptions(ctx context.Context) {
 		sensorSolakonForcePowerEntityID,
 		sensorSolakonForceDurationEntityID,
 		sensorSolakonForceModeEntityID,
+		sensorSolakonDailyEnergyEntityID,
+		sensorSolarEnergyProductionTodayEntityID,
+		sensorSolarEnergyProductionTodayRemainingEntityID,
 	}
 	// Subscribe once and filter state_changed events for selected entities.
 	sub, err := s.haWs.SubscribeStateChangedMany(ctx, watchedEntities...)
@@ -90,12 +98,36 @@ func (s *service) getStaticStates(ctx context.Context) bool {
 		totalOk = false
 	}
 	solakon.Initials.BatteryLevel = parseFloat(state.State)
+
 	state, err = s.haClient.GetStateForEntity(ctx, sensorSolakonBatteryPowerEntityID)
 	if err != nil {
 		totalOk = false
 	}
 	solakon.Initials.BatteryPower = parseFloat(state.State)
 
+	state, err = s.haClient.GetStateForEntity(ctx, sensorSolakonDailyEnergyEntityID)
+	if err != nil {
+		totalOk = false
+	}
+	solakon.Initials.DailyTotalEnergy = parseFloat(state.State)
+	//
+	// Solar production forecast
+	//
+	state, err = s.haClient.GetStateForEntity(ctx, sensorSolarEnergyProductionTodayEntityID)
+	if err != nil {
+		totalOk = false
+	}
+	s.solarProduction.EnergyProductionToday = parseFloat(state.State)
+
+	state, err = s.haClient.GetStateForEntity(ctx, sensorSolarEnergyProductionTodayRemainingEntityID)
+	if err != nil {
+		totalOk = false
+	}
+	s.solarProduction.EnergyProductionTodayRemaining = parseFloat(state.State)
+
+	//
+	// BMS
+	//
 	state, err = s.haClient.GetStateForEntity(ctx, string(MinumumBattery))
 	if err == nil {
 		batteryManagement.MinimumBatteryLevel = parseFloat(state.State)
@@ -104,9 +136,6 @@ func (s *service) getStaticStates(ctx context.Context) bool {
 	if err == nil {
 		batteryManagement.MinimumBatteryTime = state.State
 	}
-	//
-	// BMS
-	//
 	state, err = s.haClient.GetStateForEntity(ctx, string(BMS))
 	if err == nil {
 		batteryManagement.SetBMSEnabled(state.State == "on" || state.State == "true")

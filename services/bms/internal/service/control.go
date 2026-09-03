@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 )
@@ -179,10 +178,13 @@ func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 	maxChargeLevel := s.batteryManagement.AutoMaxChargeLevel
 	batteryCapacity := s.solakon.BatteryCapacity
 
+	dailyEnergy := s.solakon.Initials.DailyTotalEnergy
+	productionToday := s.solarProduction.EnergyProductionToday
+
 	chargingPower := s.batteryManagement.ControlPower
 	isCharging := false
 
-	// TODO: check if charging is needed, or expected PV energy is enough to charge the battery
+	chTimer := time.After(time.Millisecond)
 
 	doCharging := func() {
 		limit := min(maxChargeLevel, 99) // cap for safety
@@ -200,14 +202,30 @@ func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 			return
 		}
 		s.logger.Info("AutoMode ChargeWhenNeeded",
+			slog.Float64("current_battery_energy", batteryEnergy),
+			slog.Float64("charge_energy", chargeEnergy),
+			slog.Float64("current_level", level),
+			slog.Float64("limit", limit),
 			slog.Float64("amount",
 				amountToCharge),
-			slog.Float64("batteryEnergy", batteryEnergy),
-			slog.Float64("level", level),
-			slog.Float64("chargeEnergy", chargeEnergy),
-			slog.Float64("limit", limit),
+			slog.Float64("daily_energy", dailyEnergy),
+			slog.Float64("production_today", productionToday),
+			slog.Float64("pv_production", productionToday-dailyEnergy),
 		)
+
 		now := time.Now()
+		// if after 15:00 do charge
+		if now.Hour() >= 15 {
+			s.logger.Info("Enforce charging after 15:00, ignoring PV production", slog.Int("hour", now.Hour()))
+			// expected amout to charge until sunset
+			amountToCharge -= 0.5
+		} else if amountToCharge <= productionToday-dailyEnergy {
+			// TODO:
+			s.logger.Info("Battery is expected to be charged by PV production, skipping charging")
+			return
+		} else {
+			amountToCharge -= productionToday - dailyEnergy
+		}
 		spots, err := s.priceForecastCache.GetBestChargingSpots(amountToCharge, chargingPower, now)
 		if err != nil || len(spots) == 0 {
 			s.logger.Error("Failed to get best charging spots", slog.Any("err", err))
@@ -222,7 +240,12 @@ func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 			s.chargeBattery(ctx, chargingPower, duration)
 			isCharging = true
 		}
-		fmt.Println("AutoMode ChargeWhenNeeded: Current level:", level, "Max charge level:", maxChargeLevel, "Is charging:", isCharging)
+		// wait until the next spot is active
+		if !isCharging && now.Before(spots[0][0]) {
+			duration := spots[0][0].Sub(now)
+			s.logger.Info("Waiting until next charging spot is active", slog.Any("spot", spots[0]), slog.String("duration", duration.String()))
+			chTimer = time.After(duration)
+		}
 	}
 	doCharging()
 
@@ -234,6 +257,7 @@ func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 			level = parseFloat(v.Value)
 		case v := <-chMaxChargeLevel:
 			maxChargeLevel = parseFloat(v.Value)
+		case <-chTimer:
 		}
 		doCharging()
 	}
