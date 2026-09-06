@@ -608,13 +608,12 @@ func (s *service) manageStates(ctx context.Context) {
 				MaximumDrainForMinimum: v.Value,
 			}, true)
 		case v := <-chControlDuration:
-			s.batteryManagement.ControlDuration = parseFloatDuration(v.Value)
+			s.batteryManagement.SetControlDuration(parseFloatDuration(v.Value))
 			s.updateState(HAStatePayload{
 				ControlDuration: v.Value,
 			}, false)
 		case v := <-chControlTime:
-			if ct, ok := parseTimestamp(v.Value); ok {
-				s.batteryManagement.ControlTime = ct
+			if _, ok := parseTimestamp(v.Value); ok {
 				s.updateState(HAStatePayload{
 					ControlTime: v.Value,
 				}, false)

@@ -44,7 +44,7 @@ func (s *service) addControls(ctx context.Context) {
 }
 
 func (s *service) setControlTime(ctx context.Context) {
-	controlDuration := s.batteryManagement.ControlDuration
+	controlDuration := s.batteryManagement.GetControlDuration()
 	bmsActive := s.batteryManagement.GetBMSEnabled()
 
 	if !bmsActive {
@@ -192,7 +192,7 @@ func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 		batteryEnergy := batteryCapacity * (level / 100.0)
 		chargeEnergy := batteryCapacity * (limit / 100.0)
 		amountToCharge := chargeEnergy - batteryEnergy
-		if amountToCharge <= 0 {
+		if level >= limit {
 			s.logger.Info("Battery is fully charged, resetting control time and duration",
 				slog.Float64("level", level),
 				slog.Float64("limit", limit),
@@ -218,7 +218,7 @@ func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 		if now.Hour() >= 15 {
 			s.logger.Info("Enforce charging after 15:00, ignoring PV production", slog.Int("hour", now.Hour()))
 			// expected amout to charge until sunset
-			amountToCharge -= 0.5
+			// amountToCharge -= 0.5
 		} else if amountToCharge <= productionToday-dailyEnergy {
 			// TODO:
 			s.logger.Info("Battery is expected to be charged by PV production, skipping charging")
@@ -237,7 +237,9 @@ func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 		if !isCharging && now.After(spots[0][0]) && now.Before(spots[0][1]) {
 			s.logger.Info("Charging spot is currently active, starting charge", slog.Any("spot", spots[0]))
 			duration := spots[0][1].Sub(now)
-			s.chargeBattery(ctx, chargingPower, duration)
+			s.chargeBattery(context.Background(), chargingPower, duration)
+			s.batteryManagement.SetControlDuration(duration)
+			s.setControlTime(context.Background())
 			isCharging = true
 		}
 		// wait until the next spot is active
@@ -300,7 +302,7 @@ func (s *service) chargeBattery(ctx context.Context, power float64, duration tim
 		"value": formatFloatDuration(duration),
 	})
 	if err != nil {
-		s.logger.Error("Charge: Failed to set force duration", slog.Any("err", err))
+		s.logger.Error("Charge: Failed to set force duration", slog.Any("err", err), slog.Any("duration", duration))
 		return
 	}
 	// 3. number.solakon_one_modus_uberschreiben_leistung | force_power -> output power
@@ -308,7 +310,7 @@ func (s *service) chargeBattery(ctx context.Context, power float64, duration tim
 		"value": formatFloat(power),
 	})
 	if err != nil {
-		s.logger.Error("Charge: Failed to set force power", slog.Any("err", err))
+		s.logger.Error("Charge: Failed to set force power", slog.Any("err", err), slog.Any("power", power))
 		return
 	}
 	// 2. select.solakon_one_modus_uberschreiben | force_mode -> 0 off, 1 discharge, 3 charge
@@ -335,7 +337,7 @@ func (s *service) dischargeBattery(ctx context.Context, power float64, duration 
 		"value": formatFloatDuration(duration),
 	})
 	if err != nil {
-		s.logger.Error("Discharge: Failed to set force duration", slog.Any("err", err))
+		s.logger.Error("Discharge: Failed to set force duration", slog.Any("err", err), slog.Any("duration", duration))
 		return
 	}
 	// number.solakon_one_modus_uberschreiben_leistung | force_power -> output power
@@ -343,7 +345,7 @@ func (s *service) dischargeBattery(ctx context.Context, power float64, duration 
 		"value": formatFloat(power),
 	})
 	if err != nil {
-		s.logger.Error("Discharge: Failed to set force power", slog.Any("err", err))
+		s.logger.Error("Discharge: Failed to set force power", slog.Any("err", err), slog.Any("power", power))
 		return
 	}
 	// select.solakon_one_modus_uberschreiben | force_mode -> 0 off, 1 discharge, 3 charge

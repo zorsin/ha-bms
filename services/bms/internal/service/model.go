@@ -272,3 +272,15 @@ func (bm *BatteryManagement) GetBMSSimulationEnabled() bool {
 	defer bm.mux.RUnlock()
 	return bm.BMSSimulationEnabled
 }
+
+func (bm *BatteryManagement) SetControlDuration(duration time.Duration) {
+	bm.mux.Lock()
+	defer bm.mux.Unlock()
+	bm.ControlDuration = duration
+}
+
+func (bm *BatteryManagement) GetControlDuration() time.Duration {
+	bm.mux.RLock()
+	defer bm.mux.RUnlock()
+	return bm.ControlDuration
+}
