@@ -24,12 +24,14 @@ type Broadcaster struct {
 	mu          sync.RWMutex
 	subscribers map[string]BroadcastSubscribers
 	lastValues  map[string]broadcastValue
+	latest      map[string]StateUpdate
 }
 
 func NewBroadcaster() *Broadcaster {
 	return &Broadcaster{
 		subscribers: make(map[string]BroadcastSubscribers),
 		lastValues:  make(map[string]broadcastValue),
+		latest:      make(map[string]StateUpdate),
 	}
 }
 
@@ -41,6 +43,9 @@ func (b *Broadcaster) Subscribe(id string, bufferSize int) chan StateUpdate {
 		b.subscribers[id] = make(BroadcastSubscribers)
 	}
 	b.subscribers[id][ch] = struct{}{}
+	if update, ok := b.latest[id]; ok {
+		ch <- update
+	}
 	return ch
 }
 
@@ -62,6 +67,7 @@ func (b *Broadcaster) Unsubscribe(ch chan StateUpdate) {
 func (b *Broadcaster) Publish(update StateUpdate) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.latest[update.ID] = update
 
 	if subs, ok := b.subscribers[update.ID]; ok {
 		now := time.Now()

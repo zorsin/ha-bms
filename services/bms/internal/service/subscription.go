@@ -173,6 +173,15 @@ func (s *service) getStaticStates(ctx context.Context) bool {
 
 	s.solakon = solakon
 	s.batteryManagement = batteryManagement
+
+	s.broad.Publish(StateUpdate{
+		ID:    sensorSolakonBatteryLevelEntityID,
+		Value: formatFloat(solakon.Initials.BatteryLevel),
+	})
+	s.broad.Publish(StateUpdate{
+		ID:    string(AutoMaxChargeLevel),
+		Value: formatFloat(batteryManagement.AutoMaxChargeLevel),
+	})
 	s.logger.Info("Initial states", slog.Any("solakon", solakon), slog.Any("batteryManagement", batteryManagement))
 	return totalOk
 }

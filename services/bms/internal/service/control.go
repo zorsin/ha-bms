@@ -174,8 +174,9 @@ func (s *service) handleAutoMode(ctx context.Context) {
 func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 	chLevel := s.broad.Subscribe(sensorSolakonBatteryLevelEntityID, 1)
 	chMaxChargeLevel := s.broad.Subscribe(string(AutoMaxChargeLevel), 1)
-	level := s.solakon.Initials.BatteryLevel
-	maxChargeLevel := s.batteryManagement.AutoMaxChargeLevel
+
+	level := parseFloat((<-chLevel).Value)
+	maxChargeLevel := parseFloat((<-chMaxChargeLevel).Value)
 	batteryCapacity := s.solakon.BatteryCapacity
 
 	dailyEnergy := s.solakon.Initials.DailyTotalEnergy
@@ -187,6 +188,7 @@ func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 	chTimer := time.After(time.Millisecond)
 
 	doCharging := func() {
+		s.logger.Info("Starting doCharging in auto mode loop")
 		limit := min(maxChargeLevel, 99) // cap for safety
 		// current energy in battery
 		batteryEnergy := batteryCapacity * (level / 100.0)
@@ -249,8 +251,8 @@ func (s *service) autoModeChargeWhenNeeded(ctx context.Context) {
 			chTimer = time.After(duration)
 		}
 	}
-	doCharging()
 
+	slog.Info("starting auto mode loop")
 	for {
 		select {
 		case <-ctx.Done():
@@ -305,6 +307,7 @@ func (s *service) chargeBattery(ctx context.Context, power float64, duration tim
 		s.logger.Error("Charge: Failed to set force duration", slog.Any("err", err), slog.Any("duration", duration))
 		return
 	}
+	time.Sleep(500 * time.Millisecond)
 	// 3. number.solakon_one_modus_uberschreiben_leistung | force_power -> output power
 	_, err = s.haClient.CallServiceForEntity(ctx, "number", "set_value", sensorSolakonForcePowerEntityID, map[string]interface{}{
 		"value": formatFloat(power),
@@ -313,6 +316,7 @@ func (s *service) chargeBattery(ctx context.Context, power float64, duration tim
 		s.logger.Error("Charge: Failed to set force power", slog.Any("err", err), slog.Any("power", power))
 		return
 	}
+	time.Sleep(500 * time.Millisecond)
 	// 2. select.solakon_one_modus_uberschreiben | force_mode -> 0 off, 1 discharge, 3 charge
 	_, err = s.haClient.CallServiceForEntity(ctx, "select", "select_option", sensorSolakonForceModeEntityID, map[string]interface{}{
 		"option": string(SolakonForceModeCharge),
@@ -336,6 +340,7 @@ func (s *service) dischargeBattery(ctx context.Context, power float64, duration 
 	_, err := s.haClient.CallServiceForEntity(ctx, "number", "set_value", sensorSolakonForceDurationEntityID, map[string]interface{}{
 		"value": formatFloatDuration(duration),
 	})
+	time.Sleep(500 * time.Millisecond)
 	if err != nil {
 		s.logger.Error("Discharge: Failed to set force duration", slog.Any("err", err), slog.Any("duration", duration))
 		return
@@ -344,6 +349,7 @@ func (s *service) dischargeBattery(ctx context.Context, power float64, duration 
 	_, err = s.haClient.CallServiceForEntity(ctx, "number", "set_value", sensorSolakonForcePowerEntityID, map[string]interface{}{
 		"value": formatFloat(power),
 	})
+	time.Sleep(500 * time.Millisecond)
 	if err != nil {
 		s.logger.Error("Discharge: Failed to set force power", slog.Any("err", err), slog.Any("power", power))
 		return
