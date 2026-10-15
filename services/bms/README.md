@@ -11,3 +11,16 @@
 - Outputs are sent to Home Assistant to control the battery and other devices.
 - Max AC output will be monitored, if not intended by the BMS, the BMS will reduce it
 - Berechnung der zeiträume mit geringen kosten
+
+
+## ToDo of the Day
+[x] Add input power
+[x] Add control mode auto
+[x] Add auto modes
+[x] Change state update -> central function
+[x] Get expected PV energy of the day
+[x] Calc missing battery energy
+[x] Calc loading amount (best spot)
+[x] Start and stop loading the battery
+[x] Input for max battery energy
+[x] subscription chan with initial value
